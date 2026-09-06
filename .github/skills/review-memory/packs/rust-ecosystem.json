@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "rust-ecosystem",
+  "title": "Dependency and integration contracts",
+  "tags": ["rust", "cargo", "crate", "dependency", "feature", "workspace", "MSRV", "runtime", "interop", "dependency management", "feature flag", "version compatibility", "E0425", "E0433", "E0603", "E0308"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Independently synthesized ecosystem entrypoint concepts review dependency selection, supported feature combinations and integration assumptions. Crate popularity and an upstream recommendation are not compatibility evidence.",
+  "checks": [
+    {
+      "id": "dependency-fit",
+      "question": "Does the added dependency provide needed behavior within this project's maintenance, deployment and redistribution constraints?",
+      "applicability": "Adding or replacing crates, selecting a runtime, or introducing a native library dependency.",
+      "valid_counterexamples": ["A stable low-churn crate remains suitable despite infrequent commits.", "An additional dependency supplies a difficult capability already reviewed and accepted by the project.", "Vendoring is required for reproducible or disconnected builds."],
+      "evidence_needed": ["Required capability and alternatives already available in the project.", "Version-specific API support, transitive dependencies and native build prerequisites.", "Applicable maintenance and licensing requirements with evidence from the selected source version."],
+      "not_a_rule": ["Inactivity alone does not prove abandonment.", "Few dependencies is not an absolute objective.", "A README license claim is not a substitute for establishing permission to redistribute source."],
+      "source_ids": ["actionbook/rust-skills:m11-ecosystem"]
+    },
+    {
+      "id": "feature-target-matrix",
+      "question": "Will the changed feature configuration expose the intended API and dependencies for every supported build combination?",
+      "applicability": "Changing default features, optional dependencies, cfg gates, workspace feature settings, no_std support or target-specific dependencies.",
+      "valid_counterexamples": ["A platform-specific feature is intentionally unavailable elsewhere and the limitation is explicit.", "The crate supports only its default feature set.", "Another dependency intentionally enables a shared feature under the selected Cargo resolver."],
+      "evidence_needed": ["Manifest feature declarations, cfg conditions and selected resolver.", "Supported targets and default, minimal or combined feature configurations.", "Feature unification effects and compiler versions promised by the project."],
+      "not_a_rule": ["Disabling default features on one edge does not guarantee they stay disabled in the resolved graph.", "Cargo features are generally additive, not mutually exclusive configuration switches.", "Successful all-features compilation does not establish no-default-features support."],
+      "source_ids": ["actionbook/rust-skills:m11-ecosystem"]
+    },
+    {
+      "id": "dependency-type-identity",
+      "question": "Can values and traits still cross crate boundaries after a dependency version or re-export changes?",
+      "applicability": "Version upgrades, duplicate crate versions, public dependency types, adapter traits and dependency re-exports.",
+      "valid_counterexamples": ["Two versions remain private to separate subsystems and never exchange their types.", "An explicit adapter converts between representations.", "A breaking release deliberately changes an exposed dependency contract."],
+      "evidence_needed": ["Resolved versions and the dependency edges introducing them.", "Concrete public signatures and trait implementation origins.", "A supported call site requiring interoperability or a documented migration."],
+      "not_a_rule": ["Matching type names from distinct crate versions do not guarantee type identity.", "Multiple versions are not inherently a bug.", "A blanket update or version pin is not automatically the correct conflict resolution."],
+      "source_ids": ["actionbook/rust-skills:m11-ecosystem"]
+    },
+    {
+      "id": "integration-environment",
+      "question": "Does the integration provide the runtime services and target capabilities the selected API actually depends on?",
+      "applicability": "Combining async libraries, exposing Python or Node extensions, generating native bindings, or targeting WebAssembly.",
+      "valid_counterexamples": ["A runtime-independent future works with the existing executor.", "A browser-only binding is deliberately excluded from WASI builds.", "Handwritten bindings cover a small documented interface and are maintained against its ABI."],
+      "evidence_needed": ["Versioned API requirements for timers, I/O drivers, threading or host services.", "Initialization and ownership boundaries between the host and Rust.", "Supported target triples and generated-binding assumptions."],
+      "not_a_rule": ["Implementing Future does not imply compatibility with every runtime.", "Browser WebAssembly and WASI expose different host facilities.", "Binding generation does not establish lifetime safety or remove the need for ABI verification."],
+      "source_ids": ["actionbook/rust-skills:m11-ecosystem"]
+    }
+  ],
+  "sources": [
+    {"url": "https://doc.rust-lang.org/cargo/reference/features.html", "title": "Cargo Reference: Features"},
+    {"url": "https://doc.rust-lang.org/cargo/reference/resolver.html", "title": "Cargo Reference: Dependency resolution"},
+    {"url": "https://doc.rust-lang.org/cargo/reference/rust-version.html", "title": "Cargo Reference: Rust version"},
+    {"url": "https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html", "title": "Cargo Reference: Specifying dependencies"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m11-ecosystem", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m11-ecosystem/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m11-ecosystem/SKILL.md", "title": "Crate and host integration", "transformation": "independent_synthesis"}
+  ]
+}

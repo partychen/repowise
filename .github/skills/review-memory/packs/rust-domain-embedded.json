@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "rust-domain-embedded",
+  "title": "Rust firmware timing and hardware ownership",
+  "tags": ["rust", "embedded", "no_std", "firmware", "interrupt", "DMA", "HAL", "PAC", "embedded-hal", "cortex-m", "RTIC", "embassy", "heapless", "ARM", "RISC-V", "microcontroller", "bare metal"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Review firmware against its concrete execution contexts, hardware transfer rules, memory budget, and supported targets.",
+  "checks": [
+    {
+      "id": "interrupt-progress-and-exclusion",
+      "question": "Can an interrupt or higher-priority task encounter partially updated shared state, wait for code it has preempted, or extend latency beyond the device's timing budget?",
+      "applicability": "ISR changes, shared peripheral state, critical sections, atomics, priority changes, and synchronization between cores or tasks.",
+      "valid_counterexamples": ["A short, measured polling operation inside an ISR may be acceptable when its worst-case time fits the interrupt budget.", "State owned by one interrupt context without other access does not require a cross-context lock.", "A framework-provided priority-aware resource protocol can establish exclusion without a manually written critical section."],
+      "evidence_needed": ["Every accessor and its core, priority, interrupt-mask behavior, and possible nesting.", "Exclusion guarantees of the selected critical-section implementation or atomic protocol on the actual target.", "Worst-case handler and critical-section duration, including any dependency on lower-priority work."],
+      "not_a_rule": ["Disabling interrupts on one core does not necessarily exclude another core.", "RefCell performs borrow checking but does not establish interrupt exclusion by itself.", "No single mutex pattern is correct for every firmware scheduler."],
+      "source_ids": ["actionbook/rust-skills:domain-embedded"]
+    },
+    {
+      "id": "dma-buffer-handoff",
+      "question": "Does a DMA transfer retain valid, correctly placed buffers and exclusive access for as long as hardware can read or write them, including cancellation and error recovery?",
+      "applicability": "DMA setup, peripheral drivers, unsafe buffer APIs, transfer futures, cache maintenance, and transfer cancellation.",
+      "valid_counterexamples": ["A copying driver can release the caller's buffer after copying into driver-owned transfer storage.", "A coherent target or a HAL that encapsulates cache maintenance may not need application-level cache operations.", "Independent buffer regions may be used concurrently when the hardware and aliasing contracts permit it."],
+      "evidence_needed": ["DMA-accessible address ranges, alignment, transfer lengths, and actual storage lifetime.", "CPU versus device ownership before submission, at completion, and during reset or future drop.", "Hardware stop/completion guarantees and target-specific cache, barrier, and coherency requirements."],
+      "not_a_rule": ["A Rust borrow ending does not imply that a hardware transfer has stopped.", "Volatile accesses alone do not establish DMA coherency or synchronization.", "Requiring every transfer buffer to be static is stronger than necessary when a driver safely retains a shorter-lived buffer."],
+      "source_ids": ["actionbook/rust-skills:domain-embedded"]
+    },
+    {
+      "id": "memory-and-allocation-budget",
+      "question": "Can the changed storage or allocation behavior exceed the device's RAM, stack, fragmentation, or latency budget in the worst reachable operating mode?",
+      "applicability": "New collections, recursion, large local arrays, async task storage, allocator use, and buffer sizing.",
+      "valid_counterexamples": ["A no_std program can use alloc when a suitable allocator is supplied.", "Startup-only allocation or a bounded memory pool can meet a device's timing and reliability requirements.", "An embedded Linux application may legitimately use std and general-purpose allocation."],
+      "evidence_needed": ["Linker memory regions and RAM usage, including task storage and worst-case nested interrupt stacks.", "Maximum collection sizes and handling of capacity exhaustion or allocation failure.", "Where allocations occur and whether fragmentation or allocator latency affects a real-time deadline."],
+      "not_a_rule": ["Embedded Rust does not universally prohibit heap allocation.", "Fixed-capacity storage can still overflow its capacity or exhaust the stack.", "Moving data into static storage changes its lifetime but does not reduce its byte footprint."],
+      "source_ids": ["actionbook/rust-skills:domain-embedded"]
+    },
+    {
+      "id": "target-and-feature-contract",
+      "question": "Do the selected Cargo features, instruction assumptions, and runtime setup match every supported board rather than only the host build or one microcontroller variant?",
+      "applicability": "Dependency features, target configuration, HAL/PAC selection, atomic operations, floating-point options, linker scripts, and startup code.",
+      "valid_counterexamples": ["A deliberately single-board firmware can rely on that board's documented capabilities.", "Host-side tests may enable std while the firmware artifact uses a different, validated feature set.", "A portable-atomic fallback can support some missing hardware atomics when its implementation and critical-section assumptions hold."],
+      "evidence_needed": ["Exact target triples, chip revisions, board features, and supported build combinations.", "Dependency feature resolution for std/alloc, available atomic widths, FPU instructions, and runtime or panic-handler requirements.", "Target cross-build or hardware validation evidence for linker layout, vector table, and peripheral availability where affected."],
+      "not_a_rule": ["A successful host test does not prove that a bare-metal target links or runs.", "no_std is not equivalent to supporting every embedded target.", "Async firmware is an option, not a requirement for interrupt-driven hardware."],
+      "source_ids": ["actionbook/rust-skills:domain-embedded"]
+    }
+  ],
+  "sources": [
+    {
+      "kind": "external_skill",
+      "source_id": "actionbook/rust-skills:domain-embedded",
+      "repository": "actionbook/rust-skills",
+      "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94",
+      "path": "skills/domain-embedded/SKILL.md",
+      "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/domain-embedded/SKILL.md",
+      "title": "Embedded domain",
+      "transformation": "independent_synthesis"
+    }
+  ]
+}

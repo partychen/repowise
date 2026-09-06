@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "rust-type-boundaries",
+  "title": "Type and abstraction boundaries",
+  "tags": ["rust", "type", "trait", "boundary", "invariant", "conversion", "send", "sync", "typestate", "newtype", "PhantomData", "RefCell", "Cell", "interior mutability", "borrow conflict", "E0596", "E0499", "E0502", "E0277"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Check construction, conversion, trait commitments and mutation permissions. Independently synthesized entrypoint concepts focus on enforceable boundaries rather than requiring newtypes or compile-time state machines everywhere.",
+  "checks": [
+    {
+      "id": "validated-state",
+      "question": "Does the new construction or conversion path allow a value that downstream code assumes has already been validated?",
+      "applicability": "New constructors, public fields, deserialization, newtypes, and conversion implementations.",
+      "valid_counterexamples": ["Validation deliberately occurs at a later boundary before the value is used.", "The type is a raw transport object, not a validated domain object."],
+      "evidence_needed": ["All newly reachable construction paths.", "The invariant required by consumers.", "A concrete invalid value and its observable consequence."],
+      "not_a_rule": ["Every scalar does not require a newtype.", "A type name alone does not establish an invariant.", "Construction-time validation cannot freeze external facts that may change later."],
+      "source_ids": ["actionbook/rust-skills:m05-type-driven"]
+    },
+    {
+      "id": "conversion-loss",
+      "question": "Does a conversion silently discard range, units, encoding, or identity information that the receiving boundary needs?",
+      "applicability": "Numeric casts, text/byte conversion, identifiers, time units, and fallible conversion changes.",
+      "valid_counterexamples": ["A preceding bound check proves the conversion is lossless.", "Truncation or saturation is explicitly the required behavior."],
+      "evidence_needed": ["Source and destination ranges and units.", "Relevant platform width or encoding assumptions.", "Supported input that crosses the boundary condition."],
+      "not_a_rule": ["All uses of as are not defects.", "TryFrom is not necessary when losslessness is already guaranteed."],
+      "source_ids": []
+    },
+    {
+      "id": "trait-commitment",
+      "question": "Does a changed trait bound or representation unintentionally constrain supported callers or promise thread-safety semantics it does not provide?",
+      "applicability": "Public generic bounds, sealed or marker traits, PhantomData, trait objects, Send/Sync requirements, and abstraction leaks.",
+      "valid_counterexamples": ["The executor genuinely requires Send futures.", "A single-threaded design deliberately uses non-Send state.", "A stronger bound is part of an approved API change."],
+      "evidence_needed": ["Actual caller and executor requirements.", "Public API reachability and whether downstream implementations are supported.", "Types excluded by the new bound, or variance and auto-trait effects of a changed marker."],
+      "not_a_rule": ["Send and Sync are different properties.", "Web application state is not universally required to be Sync.", "PhantomData influences type-system behavior; it performs no runtime validation."],
+      "source_ids": ["actionbook/rust-skills:m05-type-driven"]
+    },
+    {
+      "id": "mutation-permission",
+      "question": "Does introducing mutation through a shared reference preserve the invariant when callbacks or nested calls access the same value?",
+      "applicability": "Replacing exclusive borrows with Cell, RefCell or synchronized interior mutability; widening methods from &mut self to &self.",
+      "valid_counterexamples": ["Cell replacement updates independent local state without lending references.", "A RefCell borrow is released before calling code that can reenter.", "A mutex deliberately coordinates access even on a currently single-threaded deployment."],
+      "evidence_needed": ["All mutation entrypoints and required multi-field invariants.", "Dynamic borrow lifetimes and reentrant call paths.", "Thread-sharing requirements and how borrow or lock failure is handled."],
+      "not_a_rule": ["Cell can store non-Copy values; particular methods such as get require Copy.", "Copy does not imply an equivalent atomic type exists.", "Using try_borrow is not a fix unless failure has a valid application meaning."],
+      "source_ids": ["actionbook/rust-skills:m03-mutability"]
+    }
+  ],
+  "sources": [
+    {"url": "https://doc.rust-lang.org/std/convert/trait.TryFrom.html", "title": "std::convert::TryFrom"},
+    {"url": "https://doc.rust-lang.org/std/marker/trait.Send.html", "title": "std::marker::Send"},
+    {"url": "https://doc.rust-lang.org/std/marker/trait.Sync.html", "title": "std::marker::Sync"},
+    {"url": "https://doc.rust-lang.org/reference/expressions/operator-expr.html#type-cast-expressions", "title": "Rust Reference: Type cast expressions"},
+    {"url": "https://doc.rust-lang.org/std/cell/index.html", "title": "std::cell"},
+    {"url": "https://doc.rust-lang.org/std/marker/struct.PhantomData.html", "title": "std::marker::PhantomData"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m03-mutability", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m03-mutability/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m03-mutability/SKILL.md", "title": "Mutation access design", "transformation": "independent_synthesis"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m05-type-driven", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m05-type-driven/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m05-type-driven/SKILL.md", "title": "Type-level contract design", "transformation": "independent_synthesis"}
+  ]
+}

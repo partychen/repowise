@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "rust-design-reasoning",
+  "title": "Design assumptions and refactoring evidence",
+  "tags": ["rust", "mental model", "design", "anti-pattern", "refactor", "borrow checker", "Deref", "iterator", "design reasoning", "E0382", "E0499", "E0502", "E0106", "E0507"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Independently synthesized mental-model and anti-pattern entrypoint concepts distinguish compiler guarantees from application requirements and demand observable reasons for refactoring. Smells and analogies are prompts, not findings.",
+  "checks": [
+    {
+      "id": "guarantee-mismatch",
+      "question": "Does the design rely on Rust proving an application property that ownership or successful compilation does not actually establish?",
+      "applicability": "Removing runtime checks or coordination because code compiles, has no unsafe blocks, or is described as memory-safe.",
+      "valid_counterexamples": ["A compiler-enforced lifetime genuinely prevents the specific reference escape under review.", "A separately verified transaction protocol establishes application consistency.", "A safe abstraction encapsulates its unsafe implementation and documents the relevant guarantee."],
+      "evidence_needed": ["The exact property claimed and the Rust mechanism said to enforce it.", "Trust boundaries including unsafe implementations and foreign code.", "A concrete interleaving or failure path for any claimed logical-race, progress or resource-release risk."],
+      "not_a_rule": ["Memory safety is not freedom from deadlock, logical races or leaks.", "A compiler error may concern unsupported syntax or bounds rather than a demonstrated runtime hazard.", "Lifetime annotations describe borrow relationships; they do not allocate storage or extend an owner's life."],
+      "source_ids": ["actionbook/rust-skills:m14-mental-model"]
+    },
+    {
+      "id": "workaround-contract",
+      "question": "When a borrow or type error is resolved by changing the data model, does the replacement still implement the original caller requirement?",
+      "applicability": "Fixes that introduce shared handles, owned snapshots, runtime borrow checks, stronger lifetime bounds or a changed public signature.",
+      "valid_counterexamples": ["A snapshot intentionally decouples processing from subsequent updates.", "An owned return value is the intended cross-request contract.", "A stronger bound matches an existing executor requirement and excludes no supported caller."],
+      "evidence_needed": ["Original diagnostic and intended data flow.", "Differences in alias visibility, identity and supported caller lifetimes.", "An example caller that observes the changed semantics or evidence that none is supported."],
+      "not_a_rule": ["A borrow-checker workaround is not inherently bad design.", "Counting clones or failed compilation attempts is not evidence of a defect.", "Requiring a broad redesign needs evidence that the local solution violates a contract."],
+      "source_ids": ["actionbook/rust-skills:m14-mental-model", "actionbook/rust-skills:m15-anti-pattern"]
+    },
+    {
+      "id": "implicit-api-exposure",
+      "question": "Does using Deref or DerefMut on a wrapper expose operations that bypass its intended abstraction?",
+      "applicability": "Adding implicit dereference to reuse an inner type's methods, especially for wrappers with validation or restricted mutation.",
+      "valid_counterexamples": ["A smart-pointer type intentionally presents the target's complete borrowed interface.", "A transparent wrapper has no stronger invariant than its target.", "Explicit forwarding exposes only the operations the wrapper promises."],
+      "evidence_needed": ["Target methods reachable through dereference coercion and method resolution.", "Wrapper invariants and mutation capabilities.", "Public compatibility implications if the target or dereference implementation changes."],
+      "not_a_rule": ["Deref is not universally inappropriate for wrappers.", "Composition alone does not prove an API is better.", "Implicit method exposure matters when it changes a supported contract, not merely because it resembles inheritance."],
+      "source_ids": ["actionbook/rust-skills:m15-anti-pattern"]
+    },
+    {
+      "id": "evaluation-order-refactor",
+      "question": "Does an iterator or function-extraction refactor preserve when effects occur, what work is skipped, and how failures are observed?",
+      "applicability": "Removing intermediate collections, replacing index loops with iterator chains, or splitting large control-flow blocks.",
+      "valid_counterexamples": ["A pure iterator pipeline produces the same values and intentionally avoids unused work.", "Materializing a collection establishes a required snapshot before mutation.", "An indexed loop expresses a necessary multi-index algorithm."],
+      "evidence_needed": ["Evaluation order before and after the change.", "Side effects, early termination and error propagation in each stage.", "Whether intermediate materialization separates borrowing, mutation or failure phases."],
+      "not_a_rule": ["Iterator adapters are lazy until consumed.", "Index-based loops are not deprecated.", "Function length and the presence of collect do not independently establish a correctness or performance problem."],
+      "source_ids": ["actionbook/rust-skills:m15-anti-pattern"]
+    }
+  ],
+  "sources": [
+    {"url": "https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html", "title": "The Rust Book: Validating References with Lifetimes"},
+    {"url": "https://doc.rust-lang.org/std/ops/trait.Deref.html", "title": "std::ops::Deref"},
+    {"url": "https://doc.rust-lang.org/std/iter/index.html", "title": "std::iter"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m14-mental-model", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m14-mental-model/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m14-mental-model/SKILL.md", "title": "Reasoning about Rust guarantees", "transformation": "independent_synthesis"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m15-anti-pattern", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m15-anti-pattern/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m15-anti-pattern/SKILL.md", "title": "Contextual refactoring choices", "transformation": "independent_synthesis"}
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "rust-concurrency-async",
+  "title": "Concurrency, cancellation and async progress",
+  "tags": ["rust", "async", "tokio", "mutex", "lock", "cancellation", "channel", "concurrency", "Send", "Sync", "spawn_local", "thread", "deadlock", "cancellation safety", "backpressure", "E0277"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Trace progress, cancellation, admission and execution context under the actual runtime. Independently synthesized concurrency entrypoint concepts supplement operation-specific references; async syntax and Arc alone do not establish thread safety.",
+  "checks": [
+    {
+      "id": "lock-progress",
+      "question": "Can this lock scope prevent another operation needed for progress, or block a runtime worker unacceptably?",
+      "applicability": "Lock ordering changes, critical sections, awaits while holding guards, and shared-state access.",
+      "valid_counterexamples": ["A short uncontended synchronous critical section can appropriately use std::sync::Mutex.", "An async mutex guard may intentionally span an await for an I/O resource."],
+      "evidence_needed": ["Concrete lock type and guard scope.", "Potentially conflicting paths and acquisition order.", "Runtime topology and the awaited operation's dependencies."],
+      "not_a_rule": ["Mutex is not always wrong in async code.", "Holding any lock across any await is not universally incorrect.", "try_lock without a progress strategy can replace deadlock with starvation or busy waiting."],
+      "source_ids": ["actionbook/rust-skills:m07-concurrency"]
+    },
+    {
+      "id": "cancellation-state",
+      "question": "If this future is dropped at a suspension point, is state left consistent and is transferred work accounted for?",
+      "applicability": "select!, timeouts, shutdown, task abort, multi-step state transitions, and queued work.",
+      "valid_counterexamples": ["The operation explicitly permits partial progress and exposes how to resume.", "A task owns completion independently and the caller only stops waiting."],
+      "evidence_needed": ["Suspension points and cancellation ownership.", "Library guarantees for the specific operation.", "State before cancellation and any compensating action."],
+      "not_a_rule": ["Timeout does not necessarily roll back work.", "Cancellation safety must be evaluated per operation, not per async function label."],
+      "source_ids": []
+    },
+    {
+      "id": "bounded-work",
+      "question": "Can the changed spawning or queueing behavior accumulate more work than the system can service?",
+      "applicability": "Unbounded channels, per-request spawning, fan-out, blocking work, and overload handling.",
+      "valid_counterexamples": ["Input cardinality is independently bounded.", "An explicit admission controller limits concurrency upstream."],
+      "evidence_needed": ["Arrival rate or input bound and service capacity.", "Queue/task lifetime and memory retained.", "Backpressure, rejection and shutdown behavior."],
+      "not_a_rule": ["Every channel need not have the same capacity.", "spawn_blocking is not unlimited admission control.", "Not all application state must be Sync; requirements depend on actual use and framework bounds."],
+      "source_ids": []
+    },
+    {
+      "id": "execution-context",
+      "question": "Does the chosen task or thread boundary support the captured values and keep long-running work from starving unrelated operations?",
+      "applicability": "Changing executors, moving code into spawned futures, adding blocking calls to async paths, or replacing Rc with Arc.",
+      "valid_counterexamples": ["A local executor intentionally keeps non-Send state on one thread.", "A bounded amount of CPU work runs directly in a future without harming its latency budget.", "A dedicated worker handles blocking I/O without occupying runtime workers."],
+      "evidence_needed": ["Executor version, worker topology and spawn API requirements.", "Captured types, values retained across suspension and required Send/Sync bounds.", "Duration and frequency of blocking or CPU work, plus worker admission limits."],
+      "not_a_rule": ["Arc<T> has thread-transfer and sharing bounds on T; it does not make arbitrary contents thread-safe.", "Async code can block and is not automatically Send.", "I/O may be served by synchronous threads; CPU work may be orchestrated by async code."],
+      "source_ids": ["actionbook/rust-skills:m07-concurrency"]
+    }
+  ],
+  "sources": [
+    {"url": "https://docs.rs/tokio/latest/tokio/sync/struct.Mutex.html", "title": "Tokio Mutex reference (select the project's version)"},
+    {"url": "https://docs.rs/tokio/latest/tokio/macro.select.html", "title": "Tokio select! and cancellation safety (select the project's version)"},
+    {"url": "https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html", "title": "Tokio spawn_blocking (select the project's version)"},
+    {"url": "https://doc.rust-lang.org/std/sync/struct.Mutex.html", "title": "std::sync::Mutex"},
+    {"url": "https://doc.rust-lang.org/std/sync/struct.Arc.html", "title": "std::sync::Arc"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m07-concurrency", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m07-concurrency/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m07-concurrency/SKILL.md", "title": "Concurrency execution and sharing", "transformation": "independent_synthesis"}
+  ]
+}

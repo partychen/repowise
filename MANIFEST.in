@@ -1,0 +1,13 @@
+include README.md README.zh.md THIRD_PARTY.md AGENTS.md
+include .github/skills/review-memory/SKILL.md
+include .github/skills/review-memory/requirements.txt
+include .github/skills/review-memory/references/*.md
+include .github/skills/review-memory/packs/__init__.py
+include .github/skills/review-memory/packs/*.json
+include .github/skills/review-memory/packs/sources/*.json
+include .github/skills/review-memory/scripts/main.py
+include .github/skills/review-memory/scripts/review_memory/*.py
+recursive-include docs *.md
+recursive-include examples *.json *.yaml
+include tools/package_skill.py
+global-exclude *.py[cod]

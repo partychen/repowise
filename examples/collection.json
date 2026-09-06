@@ -1,0 +1,56 @@
+{
+  "schema_version": "review-memory.collection-fixture.v1",
+  "repository": "example/project",
+  "notice": "Synthetic fixture for exercising the pipeline. Not real PR history, policy, or evaluation evidence.",
+  "prs": [
+    {
+      "number": 7,
+      "title": "Synthetic error boundary example",
+      "state": "closed",
+      "created_at": "2026-01-02T00:00:00Z",
+      "updated_at": "2026-01-03T00:00:00Z",
+      "merged_at": "2026-01-03T00:00:00Z",
+      "reviews": [],
+      "comments": [
+        {
+          "id": 71,
+          "body": "At this public boundary, callers need enough context to identify which record failed. A private typed-error helper is a different case.",
+          "path": "src/lib.rs",
+          "side": "RIGHT",
+          "original_commit_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "commit_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "original_line": 2,
+          "line": 2,
+          "created_at": "2026-01-02T01:00:00Z",
+          "updated_at": "2026-01-02T01:00:00Z"
+        },
+        {
+          "id": 72,
+          "in_reply_to_id": 71,
+          "body": "Updated the boundary error. This does not establish a project-wide rule.",
+          "created_at": "2026-01-02T02:00:00Z",
+          "updated_at": "2026-01-02T02:00:00Z"
+        }
+      ],
+      "issue_comments": [],
+      "versions": [
+        {
+          "comment_id": 71,
+          "comment_updated_at": "2026-01-02T01:00:00Z",
+          "before": {
+            "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "path": "src/lib.rs",
+            "side": "RIGHT",
+            "text": "pub fn load_record(id: u64) -> Result<Record, String> {\n    read_record(id).map_err(|_| \"failed\".to_owned())\n}\n"
+          },
+          "after": {
+            "commit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "path": "src/lib.rs",
+            "side": "RIGHT",
+            "text": "pub fn load_record(id: u64) -> Result<Record, String> {\n    read_record(id).map_err(|error| format!(\"record {id}: {error}\"))\n}\n"
+          }
+        }
+      ]
+    }
+  ]
+}

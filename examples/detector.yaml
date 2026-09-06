@@ -1,0 +1,14 @@
+# First-party synthetic configuration. No signature; never approved or executable by itself.
+schema_version: 1
+id: D-synthetic-api-domain-boundary
+revision: 1
+tool_id: rust.forbidden-dependency.v1
+parameters:
+  from_package: domain
+  to_package: api
+owner: synthetic-maintainer@example.invalid
+validation_ref: synthetic://example/independent-detector-validation
+valid_examples:
+  - A domain Cargo.toml has no dependency on the api package.
+violating_examples:
+  - A domain Cargo.toml adds api as an ordinary direct dependency.

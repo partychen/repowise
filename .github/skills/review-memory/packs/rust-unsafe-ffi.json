@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "rust-unsafe-ffi",
+  "title": "Unsafe and FFI contract reasoning",
+  "tags": ["rust", "unsafe", "ffi", "pointer", "abi", "lifetime", "soundness", "MaybeUninit", "transmute", "NonNull", "safe abstraction", "raw pointer", "foreign function interface", "memory layout", "undefined behavior", "E0133", "E0512"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Reading prompts for local safety contracts, foreign boundaries and value validity, independently synthesized from an inspected entrypoint and official references. Not an exploit audit, execution instruction or proof of soundness.",
+  "checks": [
+    {
+      "id": "unsafe-preconditions",
+      "question": "Which unsafe operation's preconditions does the changed safe interface need to establish, and are they still established on every relevant path?",
+      "applicability": "Raw pointer access, unchecked indexing, uninitialized storage, and safe wrappers around unsafe operations.",
+      "valid_counterexamples": ["A dominating check establishes the exact range and alignment requirements.", "An unsafe API explicitly delegates a documented precondition to callers."],
+      "evidence_needed": ["The specific unsafe API contract.", "Pointer provenance, alignment, initialization, aliasing and lifetime facts as relevant.", "A path showing the missing precondition or why it holds."],
+      "not_a_rule": ["An unsafe block is not itself a defect.", "A safety comment is an explanation to verify, not proof.", "Passing ordinary tests does not establish soundness."],
+      "source_ids": ["actionbook/rust-skills:unsafe-checker"]
+    },
+    {
+      "id": "foreign-ownership",
+      "question": "Do both sides of this FFI boundary agree on allocation, ownership transfer, callback lifetime, and release responsibility?",
+      "applicability": "Foreign handles, returned buffers, callbacks, context pointers, and deallocation functions.",
+      "valid_counterexamples": ["The foreign API retains no pointer after the call and documents that guarantee.", "Ownership transfer is explicit and the matching release API is used exactly once."],
+      "evidence_needed": ["The foreign library's versioned contract.", "Allocator/deallocator pairing and length representation.", "Callback registration, deregistration, and possible concurrent invocation."],
+      "not_a_rule": ["repr(C) does not by itself settle ownership or lifetime.", "A pointer being non-null does not establish validity."],
+      "source_ids": ["actionbook/rust-skills:unsafe-checker"]
+    },
+    {
+      "id": "abi-unwind",
+      "question": "Are representation and unwinding behavior compatible with the actual foreign calling boundary?",
+      "applicability": "extern declarations, exported functions, data layout, panic paths, and foreign exceptions.",
+      "valid_counterexamples": ["The boundary uses a supported unwind ABI with a documented cross-language contract.", "Inputs are translated into an explicitly represented FFI type rather than exposing an internal Rust layout."],
+      "evidence_needed": ["ABI declarations on both sides.", "Target platform, compiler configuration, and panic strategy.", "Reachable unwind paths and handling guarantees."],
+      "not_a_rule": ["catch_unwind does not catch aborting panics.", "Not all Rust types have a stable foreign representation.", "This pack does not authorize exploitation, project execution, or a claim of complete security coverage."],
+      "source_ids": ["actionbook/rust-skills:unsafe-checker"]
+    },
+    {
+      "id": "value-validity",
+      "question": "At the point bytes become a Rust value or reference, are initialization and validity established for the entire represented type?",
+      "applicability": "MaybeUninit buffers, assume_init calls, transmute, zeroed storage, union reads and pointer-to-reference conversion.",
+      "valid_counterexamples": ["Only a proven initialized prefix is exposed as a slice and the remaining storage stays MaybeUninit.", "All-zero initialization is explicitly valid for the concrete type.", "An unaligned read uses the appropriate raw-pointer operation without first creating an unaligned reference."],
+      "evidence_needed": ["Exact type validity requirements, including discriminants and reference constraints.", "Writes and initialized length on success, failure and early-return paths.", "Size, alignment, provenance and lifetime facts at the conversion site."],
+      "not_a_rule": ["MaybeUninit provides storage but does not prove its contents are ready for assume_init.", "Equal size is insufficient for transmute.", "repr(C) does not repair a misaligned pointer, and NonNull proves only non-nullness."],
+      "source_ids": ["actionbook/rust-skills:unsafe-checker"]
+    }
+  ],
+  "sources": [
+    {"url": "https://doc.rust-lang.org/nomicon/ffi.html", "title": "Rustonomicon: FFI"},
+    {"url": "https://doc.rust-lang.org/reference/behavior-considered-undefined.html", "title": "Rust Reference: Behavior considered undefined"},
+    {"url": "https://doc.rust-lang.org/std/slice/fn.from_raw_parts.html", "title": "std::slice::from_raw_parts"},
+    {"url": "https://doc.rust-lang.org/std/mem/union.MaybeUninit.html", "title": "std::mem::MaybeUninit"},
+    {"url": "https://doc.rust-lang.org/std/mem/fn.transmute.html", "title": "std::mem::transmute"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:unsafe-checker", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/unsafe-checker/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/unsafe-checker/SKILL.md", "title": "Unsafe operation preconditions", "transformation": "independent_synthesis"}
+  ]
+}

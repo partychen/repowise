@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "rust-api-conventions",
+  "title": "API expectations and contextual conventions",
+  "tags": ["rust", "api", "convention", "naming", "iterator", "conversion", "atomic", "ordering", "deprecation", "MSRV", "interface contract", "memory ordering", "E0277", "E0599", "E0658"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Independently synthesized coding-guidelines entrypoint concepts focus on observable API expectations and synchronization semantics. Naming preferences, dependency substitutions and lint settings are not activated policies.",
+  "checks": [
+    {
+      "id": "conversion-expectation",
+      "question": "Do a conversion method's name, signature and documentation accurately expose borrowing, ownership transfer, failure and material cost?",
+      "applicability": "Adding as_, to_ or into_ methods, getters with unexpected work, or conversion traits on public wrappers.",
+      "valid_counterexamples": ["An established public name is retained for compatibility while its behavior is clearly documented.", "An owned conversion reuses storage rather than allocating.", "A to_ conversion is cheap for the concrete representation."],
+      "evidence_needed": ["Actual implementation and concrete source and result types.", "Documented lifetime, mutation, allocation and failure behavior.", "Caller assumptions or examples affected by the mismatch."],
+      "not_a_rule": ["Naming conventions are expectations, not guarantees about allocation.", "A get_ prefix is not universally incorrect, especially for indexed or checked access.", "Cosmetic naming differences alone are not correctness findings."],
+      "source_ids": ["actionbook/rust-skills:coding-guidelines"]
+    },
+    {
+      "id": "iteration-contract",
+      "question": "Does a collection-like API expose the ownership and mutation behavior consumers expect from its borrowed and consuming iteration forms?",
+      "applicability": "Adding iter, iter_mut or IntoIterator implementations, changing iterator item types, or exposing drain-like methods.",
+      "valid_counterexamples": ["A collection intentionally offers only borrowed iteration.", "A specialized iterator returns owned handles and documents that choice.", "A consuming iterator transfers elements without promising any particular allocation strategy."],
+      "evidence_needed": ["Receiver types and Iterator::Item for each supported form.", "Effect on the collection during partial iteration and iterator drop.", "Existing generic consumers and documented iteration guarantees."],
+      "not_a_rule": ["Every type need not provide all iteration forms.", "into_iter on a reference need not consume the underlying collection.", "An iterator need not yield references merely because its name contains iter."],
+      "source_ids": ["actionbook/rust-skills:coding-guidelines"]
+    },
+    {
+      "id": "atomic-protocol",
+      "question": "Does replacing a lock with atomics preserve the complete shared-state protocol, including publication of related data?",
+      "applicability": "Mutex-to-atomic substitutions, shared flags or counters, and changes to atomic memory ordering.",
+      "valid_counterexamples": ["A standalone statistics counter needs atomic updates but publishes no other state, so Relaxed is sufficient.", "A mutex protects several fields that must change together.", "Existing synchronization establishes the required ordering independently of the counter."],
+      "evidence_needed": ["All readers and writers plus the invariant spanning their operations.", "Which write must become visible before which read.", "Ordering arguments for success and failure paths of compare-exchange where used."],
+      "not_a_rule": ["A primitive value can legitimately be protected by a mutex.", "Atomic individual accesses do not make a multi-step invariant atomic.", "SeqCst does not repair an incorrect protocol and Relaxed is not universally unsafe."],
+      "source_ids": ["actionbook/rust-skills:coding-guidelines"]
+    },
+    {
+      "id": "modernization-contract",
+      "question": "Does a suggested modernization preserve behavior and supported compiler versions rather than treating a style preference as deprecation?",
+      "applicability": "Replacing synchronization or initialization APIs, removing compatibility crates, or adopting APIs suggested by a lint or style guide.",
+      "valid_counterexamples": ["A compatibility crate is needed for the project's declared minimum Rust version.", "std::sync::Mutex poisoning behavior is part of the intended recovery contract.", "A newer standard API is adopted after an explicit supported-toolchain update."],
+      "evidence_needed": ["Actual deprecation status and stabilization version in authoritative API documentation.", "The repository's compiler and target support policy.", "Differences in poisoning, fairness, initialization failure and other behavior relevant to the substitution."],
+      "not_a_rule": ["std::sync::Mutex and std::sync::mpsc are not deprecated.", "Availability of OnceLock or LazyLock does not make every earlier initialization crate obsolete.", "The latest compiler is not mandatory, and a style guide does not authorize changing lint policy."],
+      "source_ids": ["actionbook/rust-skills:coding-guidelines"]
+    }
+  ],
+  "sources": [
+    {"url": "https://rust-lang.github.io/api-guidelines/naming.html", "title": "Rust API Guidelines: Naming"},
+    {"url": "https://doc.rust-lang.org/std/iter/trait.IntoIterator.html", "title": "std::iter::IntoIterator"},
+    {"url": "https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html", "title": "std::sync::atomic::Ordering"},
+    {"url": "https://doc.rust-lang.org/std/sync/struct.Mutex.html", "title": "std::sync::Mutex"},
+    {"url": "https://doc.rust-lang.org/std/sync/mpsc/index.html", "title": "std::sync::mpsc"},
+    {"url": "https://doc.rust-lang.org/cargo/reference/rust-version.html", "title": "Cargo Reference: Rust version"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:coding-guidelines", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/coding-guidelines/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/coding-guidelines/SKILL.md", "title": "API and synchronization conventions", "transformation": "independent_synthesis"}
+  ]
+}

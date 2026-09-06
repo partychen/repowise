@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "rust-domain-ml",
+  "title": "Rust tensor and model execution contracts",
+  "tags": ["rust", "machine learning", "inference", "tensor", "model", "GPU", "CUDA", "Metal", "ONNX", "ndarray", "candle", "burn", "tch-rs", "tract", "polars", "batching", "reproducibility"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Review model inputs, tensor storage, execution budgets, and repeatability using the actual model and numerical backend.",
+  "checks": [
+    {
+      "id": "tensor-shape-and-meaning",
+      "question": "Do input construction and output decoding preserve the model's expected dimensions, axis meaning, dtype, and preprocessing semantics for every accepted request?",
+      "applicability": "Tensor reshaping, model replacement, tokenization, image preprocessing, padding, normalization, and output indexing.",
+      "valid_counterexamples": ["A model with genuinely dynamic dimensions can accept variable sizes when its operators support them.", "Explicit broadcasting can be correct when repeated values have the intended axis semantics.", "A precision conversion can be intentional when accuracy validation supports the deployment's tolerance."],
+      "evidence_needed": ["Model signature and preprocessing metadata, including dimension order, masks, tokenizer or label versions, and dtype.", "Checks for empty inputs, incompatible shapes, oversized dimensions, and arithmetic overflow in element counts.", "Representative fixtures that validate semantic output, not just successful tensor construction."],
+      "not_a_rule": ["Equal element counts do not prove that a reshape preserves meaning.", "Successful deserialization of a model format does not guarantee support for every operator or input shape.", "All models do not use a leading batch dimension with identical conventions."],
+      "source_ids": ["actionbook/rust-skills:domain-ml"]
+    },
+    {
+      "id": "tensor-storage-and-device-lifetime",
+      "question": "Are tensor aliases, host/device transfers, and buffer lifetimes safe for the backend's execution model, and are expensive materializations justified by the actual workload?",
+      "applicability": "Tensor cloning, views, in-place operators, noncontiguous inputs, device migration, FFI bindings, and asynchronous GPU execution.",
+      "valid_counterexamples": ["A tensor clone may only duplicate a reference-counted handle rather than copy its data.", "A copy may be required to obtain contiguous storage, isolate mutation, or transfer to the selected device.", "Copying a small retained slice can reduce memory by allowing a large parent allocation to be released."],
+      "evidence_needed": ["Backend- and version-specific clone/view semantics, aliasing constraints, and ownership across FFI.", "Where device work completes and what retains host or device buffers until then.", "Transfer sizes, implicit synchronization or materialization points, and measurements where performance is the concern."],
+      "not_a_rule": ["Zero-copy is not always possible or faster.", "A Rust function returning does not necessarily imply asynchronous device work has completed.", "A shared model handle does not automatically permit concurrent mutation of its tensors or execution context."],
+      "source_ids": ["actionbook/rust-skills:domain-ml"]
+    },
+    {
+      "id": "bounded-inference-admission",
+      "question": "Can admitted inputs, queued batches, intermediate tensors, and concurrent model executions fit the host/device memory and latency budget even for the largest supported input?",
+      "applicability": "Batch schedulers, inference endpoints, parallel preprocessing, model caching, prefetching, and GPU worker pools.",
+      "valid_counterexamples": ["Single-item inference can be preferable for strict latency targets or CPU-only workloads.", "A fixed offline dataset may be processed synchronously when memory use and runtime are acceptable.", "Multiple cached model versions can be intentional when their combined footprint is explicitly budgeted."],
+      "evidence_needed": ["Bounds on batch count, tokens or pixels per batch, pending bytes, model instances, and concurrent execution.", "Intermediate activation and workspace memory estimates for maximum shapes and selected dtypes.", "Batch wait deadline, admission rejection/backpressure, zero batch-size handling, and disposition of cancelled requests."],
+      "not_a_rule": ["A maximum number of requests does not bound memory when their tensor sizes vary.", "Larger batches are not universally faster or compatible with a latency objective.", "Wrapping synchronous inference in an async function does not move compute off runtime workers."],
+      "source_ids": ["actionbook/rust-skills:domain-ml"]
+    },
+    {
+      "id": "reproducibility-and-numerical-tolerance",
+      "question": "Can the result be reproduced to the promised tolerance using recorded model, preprocessing, backend, and randomness settings rather than a seed alone?",
+      "applicability": "Training or inference reproducibility, model upgrades, backend changes, reduced precision, random sampling, and regression tests.",
+      "valid_counterexamples": ["A service may promise statistically comparable outputs rather than bit-identical GPU results.", "Stochastic generation is legitimate when its sampling policy and reproducibility limits are explicit.", "A backend-specific model format can be acceptable when portability is not a requirement."],
+      "evidence_needed": ["Model artifact identity, preprocessing configuration, evaluation/training mode, random seeds, and dependency/backend versions.", "Hardware and kernel nondeterminism assumptions, including parallel reduction order.", "Accuracy or tolerance criteria and regression fixtures covering numerical extremes relevant to the model."],
+      "not_a_rule": ["Setting a seed does not guarantee identical results across devices or kernels.", "A standard model container does not ensure numerically identical execution on all runtimes.", "Reproducibility need not mean exact bitwise equality unless that is the stated contract."],
+      "source_ids": ["actionbook/rust-skills:domain-ml"]
+    }
+  ],
+  "sources": [
+    {
+      "kind": "external_skill",
+      "source_id": "actionbook/rust-skills:domain-ml",
+      "repository": "actionbook/rust-skills",
+      "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94",
+      "path": "skills/domain-ml/SKILL.md",
+      "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/domain-ml/SKILL.md",
+      "title": "Machine-learning domain",
+      "transformation": "independent_synthesis"
+    }
+  ]
+}

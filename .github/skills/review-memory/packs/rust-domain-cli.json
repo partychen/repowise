@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "rust-domain-cli",
+  "title": "Rust command-line contracts",
+  "tags": ["rust", "cli", "command line", "stdout", "stderr", "exit code", "configuration", "clap", "figment", "indicatif", "ratatui", "crossterm", "terminal", "argument parsing"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Review the observable contract of a Rust command when invoked by people, scripts, pipelines, and interrupted jobs.",
+  "checks": [
+    {
+      "id": "output-consumer-contract",
+      "question": "Does the changed output remain usable by its intended consumer when redirected, piped, or requested in a machine-readable mode?",
+      "applicability": "Changes to result printing, diagnostics, color, progress indicators, structured output, or terminal detection.",
+      "valid_counterexamples": ["A full-screen terminal UI can deliberately own the terminal instead of providing a pipeline format.", "A documented command may emit diagnostic events as structured stdout records when those records are its actual product."],
+      "evidence_needed": ["Promised output formats and separation of result records from incidental diagnostics.", "Behavior with stdout and stderr redirected independently and with color or progress options enabled.", "Handling of downstream pipe closure under the command's documented status convention."],
+      "not_a_rule": ["Not every command needs JSON output or a progress bar.", "Do not require a single stdout/stderr policy without identifying the command's consumer contract."],
+      "source_ids": ["actionbook/rust-skills:domain-cli"]
+    },
+    {
+      "id": "configuration-provenance",
+      "question": "Can users predict the effective value when arguments, environment, files, and defaults disagree, including an explicit false, zero, or empty value?",
+      "applicability": "Configuration merging, argument defaults, subcommand overrides, config-file selection, and environment parsing.",
+      "valid_counterexamples": ["An application may intentionally give administrator-managed settings precedence over ordinary user arguments.", "A command with a single configuration source does not need a layered configuration framework."],
+      "evidence_needed": ["Documented precedence and whether parser defaults are distinguishable from supplied arguments.", "Tests for absent values versus explicit disabling or empty values and for malformed higher-priority settings.", "Which configuration source is reported on failure and whether diagnostics avoid exposing secrets."],
+      "not_a_rule": ["A particular precedence order is a convention, not a universal requirement.", "An invalid explicitly supplied value should not silently become a lower-priority value unless that fallback is part of the contract."],
+      "source_ids": ["actionbook/rust-skills:domain-cli"]
+    },
+    {
+      "id": "command-status-semantics",
+      "question": "Does the exit status distinguish the outcomes scripts rely on, without reporting success after a required operation or final output write failed?",
+      "applicability": "Changes to main, error conversion, subcommand dispatch, batch execution, output flushing, or explicit process termination.",
+      "valid_counterexamples": ["Search or comparison commands can use a nonzero status for an ordinary negative result rather than an operational failure.", "A documented best-effort batch command can tolerate item failures and report them separately.", "Help and version requests normally terminate successfully without performing the main operation."],
+      "evidence_needed": ["Public status-code meanings for success, negative results, usage errors, and partial completion.", "Propagation paths for handler, serialization, write, and flush failures.", "Integration expectations of shell callers and tests for each distinguishable outcome."],
+      "not_a_rule": ["Not every recoverable internal error determines the final process status.", "Returning Result from main does not by itself implement a command-specific exit-code protocol."],
+      "source_ids": ["actionbook/rust-skills:domain-cli"]
+    },
+    {
+      "id": "interruption-and-terminal-recovery",
+      "question": "If an interrupt arrives while the command updates files or owns terminal modes, does it leave an understandable result and restore resources within an appropriate deadline?",
+      "applicability": "Long-running commands, interactive prompts, raw terminal mode, file replacement, child processes, and cancellation handlers.",
+      "valid_counterexamples": ["A short read-only command may reasonably rely on the platform's default signal behavior.", "An interrupted operation can leave a documented resumable checkpoint rather than roll back all progress.", "Cleanup after an uncatchable termination signal cannot be guaranteed."],
+      "evidence_needed": ["Handled signals on supported platforms and the cancellation path through active work.", "Terminal guard lifetime and whether explicit process exit bypasses destructors.", "Partial-file, child-process, and repeated-interrupt behavior, including a bounded shutdown policy."],
+      "not_a_rule": ["Installing a signal handler does not make writes transactional.", "An async runtime is not required merely to support interruption."],
+      "source_ids": ["actionbook/rust-skills:domain-cli"]
+    }
+  ],
+  "sources": [
+    {
+      "kind": "external_skill",
+      "source_id": "actionbook/rust-skills:domain-cli",
+      "repository": "actionbook/rust-skills",
+      "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94",
+      "path": "skills/domain-cli/SKILL.md",
+      "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/domain-cli/SKILL.md",
+      "title": "Command-line domain",
+      "transformation": "independent_synthesis"
+    }
+  ]
+}

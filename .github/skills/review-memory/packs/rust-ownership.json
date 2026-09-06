@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "id": "rust-ownership",
+  "title": "Ownership and resource lifetimes",
+  "tags": ["rust", "ownership", "borrow", "clone", "drop", "resource", "raii", "Rc", "Arc", "Weak", "OnceLock", "lifetime", "resource cleanup", "lazy initialization", "E0382", "E0597", "E0506", "E0507", "E0515", "E0716", "E0106", "E0509"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Review ownership transfer, retention, cleanup and initialization boundaries. Independently synthesized entrypoint concepts supplement official references; borrowing, reference counting and RAII are choices to justify against actual resource requirements.",
+  "checks": [
+    {
+      "id": "ownership-transfer",
+      "question": "Does the changed ownership boundary preserve who may use, mutate, and release this value?",
+      "applicability": "Changes to borrowing, moves, shared ownership, returned references, or task captures.",
+      "valid_counterexamples": ["An owned copy intentionally isolates a request from later mutation.", "Arc shares ownership without copying the wrapped value."],
+      "evidence_needed": ["Concrete type and its Clone or Drop implementation.", "Callers, mutation requirements, and the required lifetime."],
+      "not_a_rule": ["Clone does not always allocate.", "Borrowing is not always the simpler or more correct interface.", "An owned T: 'static need not live forever; the bound excludes shorter-lived borrowed data."],
+      "source_ids": ["actionbook/rust-skills:m01-ownership", "actionbook/rust-skills:m02-resource"]
+    },
+    {
+      "id": "resource-retention",
+      "question": "Can a newly retained owner or guard keep a scarce resource alive beyond its intended boundary?",
+      "applicability": "Caches, closures, error paths, shared reference cycles, file handles, permits, and guards.",
+      "valid_counterexamples": ["A connection pool deliberately owns idle connections.", "A longer-lived guard is required to protect the entire transaction."],
+      "evidence_needed": ["Resource owner and release path.", "Observed or bounded lifetime and resource budget.", "Normal, early-return, and cancellation paths."],
+      "not_a_rule": ["A longer lifetime is not inherently a leak.", "Rust memory safety does not prove application-level resource release.", "Weak links are one way to avoid strong cycles; explicit cycle breaking or arena ownership may also be appropriate."],
+      "source_ids": ["actionbook/rust-skills:m02-resource", "actionbook/rust-skills:m12-lifecycle"]
+    },
+    {
+      "id": "cleanup-contract",
+      "question": "Does correctness depend on cleanup whose timing or execution this change no longer guarantees?",
+      "applicability": "Drop-based cleanup, explicit close/flush operations, abrupt task termination, and ownership cycles.",
+      "valid_counterexamples": ["Best-effort cleanup is sufficient for disposable cache state.", "An explicit finish operation provides the required error reporting."],
+      "evidence_needed": ["The cleanup API's actual guarantees.", "Whether cleanup failure must reach a caller.", "Relevant panic strategy and shutdown behavior."],
+      "not_a_rule": ["Destructors cannot be assumed to run in every termination scenario.", "Drop is not a general substitute for fallible protocol completion."],
+      "source_ids": ["actionbook/rust-skills:m12-lifecycle"]
+    },
+    {
+      "id": "initialization-scope",
+      "question": "Can moving resource creation into a lazy singleton or pool change which configuration, failure, or stale state later callers observe?",
+      "applicability": "Introducing OnceLock, LazyLock, cached clients, or reusable connections in place of per-request creation.",
+      "valid_counterexamples": ["Process-wide immutable configuration is intentionally captured once.", "A pool resets session state and checks connection health before reuse."],
+      "evidence_needed": ["Initialization inputs and their intended lifetime.", "The chosen primitive's behavior after initializer failure or reentrant initialization.", "Pool reset, invalidation and shutdown contracts."],
+      "not_a_rule": ["Lazy initialization does not automatically support configuration reload.", "A global resource is not inherently incorrect.", "OnceLock and LazyLock do not have identical failure behavior."],
+      "source_ids": ["actionbook/rust-skills:m12-lifecycle"]
+    }
+  ],
+  "sources": [
+    {"url": "https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html", "title": "The Rust Book: Understanding Ownership"},
+    {"url": "https://doc.rust-lang.org/std/clone/trait.Clone.html", "title": "std::clone::Clone"},
+    {"url": "https://doc.rust-lang.org/std/ops/trait.Drop.html", "title": "std::ops::Drop"},
+    {"url": "https://doc.rust-lang.org/std/sync/struct.Arc.html", "title": "std::sync::Arc"},
+    {"url": "https://doc.rust-lang.org/std/sync/struct.OnceLock.html", "title": "std::sync::OnceLock"},
+    {"url": "https://doc.rust-lang.org/std/sync/struct.LazyLock.html", "title": "std::sync::LazyLock"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m01-ownership", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m01-ownership/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m01-ownership/SKILL.md", "title": "Ownership relationships", "transformation": "independent_synthesis"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m02-resource", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m02-resource/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m02-resource/SKILL.md", "title": "Shared resource ownership", "transformation": "independent_synthesis"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m12-lifecycle", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m12-lifecycle/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m12-lifecycle/SKILL.md", "title": "Resource lifecycle boundaries", "transformation": "independent_synthesis"}
+  ]
+}

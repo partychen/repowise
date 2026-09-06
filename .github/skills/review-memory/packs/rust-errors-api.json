@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "rust-errors-api",
+  "title": "Error behavior and API contracts",
+  "tags": ["rust", "error", "result", "panic", "api", "compatibility", "retry", "backoff", "thiserror", "anyhow", "error handling", "domain error", "recovery strategy", "error context", "E0277", "E0308"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Review failure propagation, panic boundaries, compatibility and recovery semantics. Independently synthesized entrypoint concepts distinguish caller action from diagnostics without prescribing an error crate.",
+  "checks": [
+    {
+      "id": "failure-propagation",
+      "question": "Does a changed error path preserve the information and recovery behavior required by callers?",
+      "applicability": "Error conversion, fallback values, ignored Results, retries, and partial-success APIs.",
+      "valid_counterexamples": ["A public boundary intentionally hides implementation details while retaining diagnostic context privately.", "A documented best-effort operation may discard an irrelevant failure."],
+      "evidence_needed": ["Caller behavior for each error variant.", "Required retry and idempotency semantics.", "The original and changed failure paths."],
+      "not_a_rule": ["Every error does not need a new custom type.", "Returning an error is not always preferable to a documented fallback.", "Adding context everywhere is not automatically useful; retain relevant causes without exposing sensitive inputs."],
+      "source_ids": ["actionbook/rust-skills:m06-error-handling", "actionbook/rust-skills:m13-domain-error"]
+    },
+    {
+      "id": "panic-boundary",
+      "question": "Can this new panic occur for supported input, and what does crossing this boundary do to the service or caller?",
+      "applicability": "unwrap, expect, indexing, assertions, thread boundaries, and external input validation.",
+      "valid_counterexamples": ["An invariant established immediately beforehand makes failure unreachable.", "A test intentionally panics on an unmet expectation.", "Initialization may deliberately fail fast on an invalid deployment configuration."],
+      "evidence_needed": ["Reachable input or a concrete broken invariant.", "Execution context, panic strategy, and recovery boundary.", "The repository's supported-input contract."],
+      "not_a_rule": ["Not every unwrap is a bug.", "catch_unwind is not a universal error-handling strategy.", "Replacing unwrap with expect improves explanation, not recoverability."],
+      "source_ids": ["actionbook/rust-skills:m06-error-handling"]
+    },
+    {
+      "id": "public-contract-change",
+      "question": "Does the change alter a public behavior or type commitment on which supported consumers rely?",
+      "applicability": "Public signatures, error enums, serialization behavior, trait bounds, and default behavior.",
+      "valid_counterexamples": ["The API is private or explicitly unstable.", "A coordinated breaking release intentionally changes the contract."],
+      "evidence_needed": ["Public reachability and supported consumers.", "Versioning policy and migration plan.", "A concrete formerly valid use or expected behavior."],
+      "not_a_rule": ["All API changes are not forbidden.", "A newer compiler or dependency version is not automatically permitted."],
+      "source_ids": []
+    },
+    {
+      "id": "recovery-budget",
+      "question": "Can the proposed retry or fallback produce duplicate effects, conceal an unacceptable result, or exceed the caller's recovery budget?",
+      "applicability": "Classifying errors as retryable, adding backoff, serving cached results after failure, or introducing a circuit breaker.",
+      "valid_counterexamples": ["An idempotency key makes replay safe and attempts share a bounded deadline.", "A documented stale-data mode is acceptable for this read.", "A background reconciliation loop intentionally retries indefinitely with bounded load and explicit cancellation."],
+      "evidence_needed": ["Whether an error proves no effect occurred or leaves completion uncertain.", "Error categories, retry limits, delay policy and caller deadline.", "Fallback freshness requirements, observability and circuit recovery conditions."],
+      "not_a_rule": ["A transient error does not prove the operation is safe to repeat.", "Backoff alone does not bound total retry work.", "A fallback is not success unless it meets the caller's contract."],
+      "source_ids": ["actionbook/rust-skills:m13-domain-error"]
+    }
+  ],
+  "sources": [
+    {"url": "https://doc.rust-lang.org/book/ch09-00-error-handling.html", "title": "The Rust Book: Error Handling"},
+    {"url": "https://doc.rust-lang.org/std/result/enum.Result.html", "title": "std::result::Result"},
+    {"url": "https://doc.rust-lang.org/cargo/reference/semver.html", "title": "Cargo Reference: SemVer Compatibility"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m06-error-handling", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m06-error-handling/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m06-error-handling/SKILL.md", "title": "Failure interface choices", "transformation": "independent_synthesis"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m13-domain-error", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m13-domain-error/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m13-domain-error/SKILL.md", "title": "Recovery and error audiences", "transformation": "independent_synthesis"}
+  ]
+}

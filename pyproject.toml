@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "review-memory"
+version = "0.3.0"
+description = "Evidence-backed, human-approved repository review knowledge"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["PyYAML>=6.0.2,<7"]
+
+[project.scripts]
+review-memory = "review_memory.cli:main"
+
+[tool.setuptools]
+packages = ["review_memory", "review_memory_packs"]
+package-dir = {review_memory = ".github/skills/review-memory/scripts/review_memory", review_memory_packs = ".github/skills/review-memory/packs"}
+
+[tool.setuptools.package-data]
+review_memory_packs = ["*.json", "sources/*.json"]

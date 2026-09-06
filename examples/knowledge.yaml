@@ -1,0 +1,31 @@
+# First-party synthetic example. Never approved; not a real repository policy.
+schema_version: 1
+id: K-synthetic-api-domain-boundary
+revision: 1
+title: Synthetic example of an API-to-domain dependency boundary
+principle: In this fictional repository, the domain crate must not depend directly on the API crate.
+maturity: candidate
+execution: hybrid
+enforcement: advisory
+applicability:
+  paths:
+    - crates/domain/Cargo.toml
+  exclusions: []
+  context: Synthetic Cargo manifest dependency boundary; not a universal Rust architecture rule.
+sources:
+  - kind: policy
+    reference: synthetic://example/architecture-decision
+    version: synthetic-v1
+    available_at: "2025-01-01T00:00:00Z"
+examples:
+  valid:
+    - The domain package depends on a shared types package without importing the API package.
+  violating:
+    - The domain package adds an ordinary direct dependency on the API package.
+exceptions:
+  - This example makes no claim about another repository or an unreviewed package naming convention.
+owner: synthetic-maintainer@example.invalid
+observed_at: "2025-01-01T00:00:00Z"
+effective_from: null
+valid_until: null
+detector_ref: D-synthetic-api-domain-boundary

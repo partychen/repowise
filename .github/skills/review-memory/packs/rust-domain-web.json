@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "rust-domain-web",
+  "title": "Rust HTTP execution and request boundaries",
+  "tags": ["rust", "web", "HTTP", "REST", "API", "middleware", "router", "handler", "extractor", "axum", "actix-web", "tower", "hyper", "reqwest", "sqlx", "diesel", "tokio", "web service", "interface", "request validation", "shared state"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Review HTTP request processing against the server's real runtime, state-sharing topology, input contracts, and failure semantics.",
+  "checks": [
+    {
+      "id": "handler-runtime-progress",
+      "question": "Can work performed by this handler or middleware monopolize an executor worker or exhaust its blocking-work capacity under the expected concurrency?",
+      "applicability": "Synchronous database calls, filesystem access, compression, password hashing, model inference, blocking locks, and new task spawning.",
+      "valid_counterexamples": ["Short, bounded CPU work can be performed inline when it fits the request latency and scheduling budget.", "A synchronous server or dedicated worker can intentionally perform blocking I/O.", "A brief uncontended standard mutex critical section can be appropriate when it does not suspend or create a progress dependency."],
+      "evidence_needed": ["Actual runtime and worker configuration, plus whether called libraries block or yield.", "Worst-case work duration, concurrent request count, and any work-pool admission bound.", "Cancellation and timeout behavior for delegated work, including whether it continues after the request ends."],
+      "not_a_rule": ["An async function is not automatically nonblocking.", "spawn_blocking does not provide unlimited capacity or cancel already running work when its caller times out.", "HTTP services do not universally require an async architecture."],
+      "source_ids": ["actionbook/rust-skills:domain-web"]
+    },
+    {
+      "id": "state-sharing-topology",
+      "question": "Does application state have the ownership and synchronization required by the threads and tasks that actually access it, without exposing request-specific data to unrelated requests?",
+      "applicability": "Application state registration, worker factories, caches, sessions, lock scopes, global variables, and background tasks.",
+      "valid_counterexamples": ["Worker-local state on a supported single-threaded executor can use non-Send or non-Sync types when they never cross that boundary.", "A thread-safe pool or immutable configuration object may be shared without another application-level lock.", "Connection pools and caches can intentionally outlive individual requests."],
+      "evidence_needed": ["Framework trait bounds and where state is constructed, cloned, moved, or shared across workers.", "Mutating access paths, lock ordering and scope, and whether guards span suspension points.", "Isolation of per-user or per-request fields and lifecycle ownership for background work."],
+      "not_a_rule": ["All web state need not be Sync; requirements depend on its actual use and framework bounds.", "Arc does not make its contents thread-safe.", "Duplicating state per worker is not equivalent to sharing one authoritative mutable value."],
+      "source_ids": ["actionbook/rust-skills:domain-web"]
+    },
+    {
+      "id": "validated-request-boundary",
+      "question": "Before externally supplied data causes expensive work or state changes, are its size, business invariants, and caller permissions checked at the appropriate boundary?",
+      "applicability": "Routes, extractors, deserialization, upload handling, pagination, middleware order, and conversion of request types into domain commands.",
+      "valid_counterexamples": ["Validation already enforced by a trusted extractor or domain constructor need not be duplicated in each handler.", "A streaming upload can be validated incrementally with explicit byte and time limits.", "A public read-only route can intentionally require no authentication."],
+      "evidence_needed": ["Body, decompression, collection, and pagination limits before allocations or fan-out.", "Which checks deserialization performs versus remaining semantic checks such as ranges and cross-field constraints.", "Authentication/authorization placement relative to resource lookup and mutation, and rejection tests for invalid requests."],
+      "not_a_rule": ["Successfully parsing JSON does not establish business validity or authorization.", "A typed identifier does not prove the caller may access the identified resource.", "Not every route needs the same limits, middleware, or authentication policy."],
+      "source_ids": ["actionbook/rust-skills:domain-web"]
+    },
+    {
+      "id": "response-and-failure-boundary",
+      "question": "Do errors, timeouts, and client disconnects leave both the public response and any already-started effects consistent with the endpoint's documented contract?",
+      "applicability": "Error-to-response conversion, transaction boundaries, middleware timeouts, streaming responses, detached jobs, and request cancellation.",
+      "valid_counterexamples": ["A durable job endpoint can return acceptance while explicitly transferring completion ownership to a background worker.", "A streaming response may need to report failure through its framing or terminate the stream after headers have been sent.", "Safe user-facing validation details can be returned while internal dependency details remain private."],
+      "evidence_needed": ["Mappings for client errors, missing resources, conflicts, dependency failures, and internal failures.", "Response-commit point, side-effect commit point, and state left when the future is dropped or a timeout fires.", "Redacted diagnostics with correlation identifiers and tests that distinguish no effect, completed effect, and uncertain outcome."],
+      "not_a_rule": ["A timeout response does not prove that a database or remote side effect was rolled back.", "Returning an error does not undo earlier mutations.", "Request completion need not destroy explicitly owned background work or shared service resources."],
+      "source_ids": ["actionbook/rust-skills:domain-web"]
+    }
+  ],
+  "sources": [
+    {
+      "kind": "external_skill",
+      "source_id": "actionbook/rust-skills:domain-web",
+      "repository": "actionbook/rust-skills",
+      "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94",
+      "path": "skills/domain-web/SKILL.md",
+      "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/domain-web/SKILL.md",
+      "title": "Web-service domain",
+      "transformation": "independent_synthesis"
+    }
+  ]
+}

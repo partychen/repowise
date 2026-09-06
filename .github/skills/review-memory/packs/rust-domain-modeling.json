@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "rust-domain-modeling",
+  "title": "Domain identity and consistency boundaries",
+  "tags": ["rust", "domain", "DDD", "entity", "value object", "aggregate", "repository", "invariant", "state transition", "domain model", "business rule", "E0369", "E0277"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Independently synthesized domain-modeling entrypoint concepts ask what identity, consistency and transitions mean to this application. They do not impose DDD patterns or infer business rules from Rust ownership.",
+  "checks": [
+    {
+      "id": "domain-identity",
+      "question": "Do equality, hashing and duplication distinguish the same entity from two equal snapshots in the way consumers require?",
+      "applicability": "Adding IDs, deriving PartialEq/Eq/Hash, cloning records, or using domain objects as collection keys.",
+      "valid_counterexamples": ["A snapshot deliberately compares all fields, even when its entity ID matches another snapshot.", "A value object is interchangeable by its canonical contents.", "Cloning an entity representation preserves identity rather than creating a new entity."],
+      "evidence_needed": ["The application's definition of identity and equality.", "Cache, set and deduplication consumers.", "Consistency between Eq and Hash and stability of keys while stored."],
+      "not_a_rule": ["Entities need not compare solely by ID.", "Clone does not necessarily mean creation of a distinct business entity.", "Rust ownership uniqueness is not business-identity uniqueness."],
+      "source_ids": ["actionbook/rust-skills:m09-domain"]
+    },
+    {
+      "id": "consistency-boundary",
+      "question": "Can the changed update path expose related domain state that violates a rule requiring those changes to succeed together?",
+      "applicability": "Splitting an aggregate, exposing mutable children, moving validation between services, or updating related records separately.",
+      "valid_counterexamples": ["Eventual consistency is an explicit contract with observable intermediate states and reconciliation.", "Independent children have no cross-record invariant.", "A transaction or version check protects the required relationship outside the Rust object."],
+      "evidence_needed": ["The specific cross-field or cross-record business rule.", "All update entrypoints and partial-failure paths.", "Transaction, synchronization or reconciliation guarantees across actual storage boundaries."],
+      "not_a_rule": ["An owned object tree does not itself create database atomicity.", "Every relationship does not need a single aggregate.", "Private fields alone cannot prevent inconsistent external updates."],
+      "source_ids": ["actionbook/rust-skills:m09-domain"]
+    },
+    {
+      "id": "transition-authority",
+      "question": "Does each newly reachable domain transition check the current conditions that authorize it, including conditions outside the local value?",
+      "applicability": "Changing order, session or workflow states; adding transition methods; restoring persisted state into an active object.",
+      "valid_counterexamples": ["A runtime enum with explicit checks is sufficient for externally driven transitions.", "A previously validated capability remains authoritative under its documented lifetime.", "A replay process intentionally restores historical states without reenacting their effects."],
+      "evidence_needed": ["Allowed transitions and the business reason each prerequisite exists.", "Where external facts such as permissions or inventory are read and refreshed.", "Behavior when a prerequisite changes between checking and committing."],
+      "not_a_rule": ["Typestate is optional and does not freeze remote state.", "A boolean can adequately represent a genuinely binary independent condition.", "Construction-time validation does not establish every later transition's validity."],
+      "source_ids": ["actionbook/rust-skills:m09-domain"]
+    },
+    {
+      "id": "persistence-semantics",
+      "question": "Does a persistence abstraction preserve the domain meaning of lookup, save and emitted events across its implementations?",
+      "applicability": "Introducing repository traits, alternate storage backends, in-memory fakes, or domain events coupled to writes.",
+      "valid_counterexamples": ["A concrete storage implementation is intentional because no alternate backend is supported.", "An event describes an attempted action rather than a committed fact and is documented accordingly.", "A fake omits persistence behavior irrelevant to its explicitly narrow test."],
+      "evidence_needed": ["Meaning of missing, conflicting and successfully stored values.", "Identity allocation and concurrency behavior for each supported implementation.", "When an event becomes observable relative to persistence success."],
+      "not_a_rule": ["A trait signature cannot express all persistence semantics.", "The repository pattern is not mandatory.", "An enum event does not itself provide reliable delivery."],
+      "source_ids": ["actionbook/rust-skills:m09-domain"]
+    }
+  ],
+  "sources": [
+    {"url": "https://doc.rust-lang.org/std/cmp/trait.Eq.html", "title": "std::cmp::Eq"},
+    {"url": "https://doc.rust-lang.org/std/hash/trait.Hash.html", "title": "std::hash::Hash"},
+    {"url": "https://doc.rust-lang.org/reference/visibility-and-privacy.html", "title": "Rust Reference: Visibility and privacy"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m09-domain", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m09-domain/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m09-domain/SKILL.md", "title": "Domain roles and consistency", "transformation": "independent_synthesis"}
+  ]
+}

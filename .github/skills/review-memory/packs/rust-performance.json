@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "rust-performance",
+  "title": "Performance with a workload and a budget",
+  "tags": ["rust", "performance", "allocation", "clone", "latency", "throughput", "complexity", "generic", "dyn", "monomorphization", "heap allocation", "benchmark", "dynamic dispatch", "zero-cost abstraction", "E0277", "E0308", "E0599", "E0038"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Use workload-specific evidence for algorithm, storage and dispatch costs. Independently synthesized entrypoint concepts are hypotheses to check, not universal speedup estimates or preferences for static dispatch.",
+  "checks": [
+    {
+      "id": "work-amplification",
+      "question": "Does this change repeat work as input grows in a way that violates a documented or measured budget?",
+      "applicability": "Nested traversals, repeated parsing, sorting, formatting, and lookup changes.",
+      "valid_counterexamples": ["Inputs are tightly bounded and the simpler algorithm is sufficient.", "Extra work reduces a more significant I/O or synchronization cost."],
+      "evidence_needed": ["Input bounds and call frequency.", "Before/after cost model or existing measurement.", "The affected latency, throughput, or resource budget."],
+      "not_a_rule": ["Asymptotic complexity alone does not establish practical regression.", "Do not claim benchmark results without measurements.", "Appending to a growing String is not inherently quadratic; distinguish amortized growth from rebuilding the prefix."],
+      "source_ids": ["actionbook/rust-skills:m10-performance"]
+    },
+    {
+      "id": "allocation-retention",
+      "question": "Is the concrete allocation, copying, or retained capacity introduced here material on a relevant execution path?",
+      "applicability": "Collection construction, buffer growth, cloning, ownership changes, and caches.",
+      "valid_counterexamples": ["Clone copies a small value without allocation.", "Capacity reuse avoids repeated allocations.", "An owned copy simplifies lifetime management with negligible measured cost."],
+      "evidence_needed": ["Concrete types and operation implementations.", "Object sizes, frequency, and retention duration.", "Existing allocator profiles or an explicitly labeled cost hypothesis."],
+      "not_a_rule": ["clone does not imply heap allocation.", "Avoiding all allocations is not a universal goal.", "Zero-copy can increase lifetime and memory-retention costs."],
+      "source_ids": ["actionbook/rust-skills:m10-performance"]
+    },
+    {
+      "id": "measurement-validity",
+      "question": "Does the evidence isolate this change under a representative build and workload?",
+      "applicability": "Performance claims used to justify findings or alternative implementations.",
+      "valid_counterexamples": ["A deterministic resource-bound violation can be shown without a benchmark.", "A small local microbenchmark answers a deliberately narrow question."],
+      "evidence_needed": ["Build profile, workload, environment, and comparison baseline.", "Repeated observations or stated uncertainty.", "Any semantic tradeoff introduced by the proposed optimization."],
+      "not_a_rule": ["This pack does not authorize running project benchmarks.", "A microbenchmark does not automatically predict service-level gains.", "A debug-build measurement can answer a debug-workload question but does not establish release performance."],
+      "source_ids": ["actionbook/rust-skills:m10-performance"]
+    },
+    {
+      "id": "dispatch-budget",
+      "question": "Does changing between generic, enum and trait-object dispatch improve the relevant budget without sacrificing required extensibility?",
+      "applicability": "Replacing concrete types with dyn Trait, boxing heterogeneous values, or adding generic parameters to frequently instantiated code.",
+      "valid_counterexamples": ["Borrowed trait objects avoid ownership allocation while preserving runtime selection.", "A plugin boundary intentionally accepts dynamic dispatch.", "A closed enum supports all required alternatives with acceptable size."],
+      "evidence_needed": ["Required implementation set and whether downstream extension is supported.", "Concrete allocation sites, dispatch frequency and inlining opportunities.", "Relevant runtime, binary-size or compile-time measurements and dyn-compatibility constraints."],
+      "not_a_rule": ["Static dispatch does not imply zero total execution cost.", "Dynamic dispatch is not reserved for types unknown at compile time.", "Generic code is not guaranteed to be faster, and trait objects do not always require allocation."],
+      "source_ids": ["actionbook/rust-skills:m04-zero-cost"]
+    }
+  ],
+  "sources": [
+    {"url": "https://doc.rust-lang.org/std/vec/struct.Vec.html", "title": "std::vec::Vec"},
+    {"url": "https://doc.rust-lang.org/std/clone/trait.Clone.html", "title": "std::clone::Clone"},
+    {"url": "https://doc.rust-lang.org/cargo/reference/profiles.html", "title": "Cargo Reference: Profiles"},
+    {"url": "https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility", "title": "Rust Reference: Dyn compatibility"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m04-zero-cost", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m04-zero-cost/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m04-zero-cost/SKILL.md", "title": "Dispatch and abstraction tradeoffs", "transformation": "independent_synthesis"},
+    {"kind": "external_skill", "source_id": "actionbook/rust-skills:m10-performance", "repository": "actionbook/rust-skills", "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94", "path": "skills/m10-performance/SKILL.md", "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/m10-performance/SKILL.md", "title": "Workload-based optimization", "transformation": "independent_synthesis"}
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "rust-domain-iot",
+  "title": "Rust device connectivity and field operation",
+  "tags": ["rust", "iot", "MQTT", "sensor", "gateway", "telemetry", "offline", "reconnect", "OTA", "power", "rumqttc", "paho-mqtt", "embassy", "embedded-hal", "edge computing", "power consumption"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Review device behavior during disconnection, delayed delivery, mixed firmware versions, and constrained energy or storage.",
+  "checks": [
+    {
+      "id": "connection-recovery-and-replay",
+      "question": "After network loss or broker restart, does the device restore the required session and subscriptions without uncontrolled retry traffic or unintended replay of actuator commands?",
+      "applicability": "MQTT event loops, session options, reconnect policies, command subscriptions, acknowledgements, and retained messages.",
+      "valid_counterexamples": ["A wake-send-sleep sensor can deliberately reconnect for each reporting window.", "A latest-value telemetry stream may intentionally replace stale samples instead of replaying every message.", "A command may be safely repeatable when its semantics set a desired state rather than increment an effect."],
+      "evidence_needed": ["Who drives network progress and restores subscriptions for the specific client's session behavior.", "Backoff, jitter, retry ceilings or energy limits, and behavior during authentication failures.", "Duplicate, retained, expired, and reordered command handling across device and broker restarts."],
+      "not_a_rule": ["Clients need not remain connected continuously.", "MQTT delivery guarantees do not automatically make application side effects exactly once.", "An async publish call being accepted into a local queue is not necessarily proof of remote delivery."],
+      "source_ids": ["actionbook/rust-skills:domain-iot"]
+    },
+    {
+      "id": "offline-storage-and-drain",
+      "question": "During the longest supported outage, can buffered observations remain within storage limits and be drained without silent loss, duplication, or starvation of new work?",
+      "applicability": "Store-and-forward queues, local journals, telemetry batching, acknowledgement handling, and reconnect upload logic.",
+      "valid_counterexamples": ["Lossy environmental telemetry can use an explicit sampling, aggregation, or oldest-first discard policy.", "A mains-powered gateway with durable storage can retain more history than a small sensor.", "A device whose contract permits losing unsent samples on reboot can use a volatile bounded buffer."],
+      "evidence_needed": ["Expected sample sizes and rates, outage budget, queue capacity, and full-queue policy.", "Crash consistency around enqueue, upload, acknowledgement, and deletion, including record identity.", "Flash wear, corrupted-record recovery, drain bandwidth, and fairness between backlog and live observations."],
+      "not_a_rule": ["Every observation does not require persistence unless the product's loss tolerance requires it.", "A retry loop does not substitute for a retention or overflow policy.", "A fixed message count is not a byte bound when payload sizes vary."],
+      "source_ids": ["actionbook/rust-skills:domain-iot"]
+    },
+    {
+      "id": "protocol-and-upgrade-compatibility",
+      "question": "Can old devices, new gateways, queued payloads, and rollback firmware interpret or safely reject each other's messages and persisted state during a staged upgrade?",
+      "applicability": "Wire schemas, serialization changes, OTA firmware, command formats, persistent configuration, and credential rotation.",
+      "valid_counterexamples": ["An additive schema change can remain compatible without changing a version number when readers tolerate unknown fields.", "A controlled offline installation can upgrade all components together if incompatible stored messages are handled explicitly.", "Some firmware cannot safely roll back after a state migration and may instead require a documented recovery image or forward-repair path."],
+      "evidence_needed": ["Compatibility policy for field defaults, enum variants, units, timestamps, and schema/version negotiation.", "Mixed-version and rollback tests using delayed messages and previously persisted state.", "Authentication of remote commands and update artifacts, plus recovery behavior if download, validation, or activation is interrupted."],
+      "not_a_rule": ["A version field alone does not establish compatibility.", "Transport encryption does not by itself verify a firmware image's origin or authorize an actuator command.", "Rollback is not automatically safe after irreversible state changes."],
+      "source_ids": ["actionbook/rust-skills:domain-iot"]
+    },
+    {
+      "id": "energy-and-wakeup-budget",
+      "question": "Do polling, reconnects, keepalives, sampling, and background tasks preserve the device's required sleep time and event-response budget under both normal and failed-network conditions?",
+      "applicability": "Timers, radio operation, sensor polling, task scheduling, watchdog configuration, and power-mode transitions.",
+      "valid_counterexamples": ["A mains-powered gateway may keep connections active to meet low-latency requirements.", "A battery-powered alarm can spend extra energy to meet a documented urgent-delivery requirement.", "A simple blocking sleep or interrupt-driven loop may be appropriate without an async executor."],
+      "evidence_needed": ["Energy source, expected lifetime, radio duty cycle, and required command or sampling latency.", "Actual wake sources, peripheral power states, outstanding work before sleep, and wake recovery behavior.", "Measurements or reasoned worst-case bounds for outages, repeated retries, and watchdog interactions."],
+      "not_a_rule": ["Minimum power consumption is not the only objective for every device.", "no_std or fewer allocations alone does not prove low energy consumption.", "An async task that wakes frequently can prevent useful sleep just as polling can."],
+      "source_ids": ["actionbook/rust-skills:domain-iot"]
+    }
+  ],
+  "sources": [
+    {
+      "kind": "external_skill",
+      "source_id": "actionbook/rust-skills:domain-iot",
+      "repository": "actionbook/rust-skills",
+      "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94",
+      "path": "skills/domain-iot/SKILL.md",
+      "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/domain-iot/SKILL.md",
+      "title": "Connected-device domain",
+      "transformation": "independent_synthesis"
+    }
+  ]
+}

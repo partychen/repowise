@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "rust-domain-fintech",
+  "title": "Rust monetary calculations and transaction records",
+  "tags": ["rust", "fintech", "money", "currency", "decimal", "rounding", "ledger", "payment", "idempotency", "audit", "rust_decimal", "serde", "finance", "precision"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Review numerical and transactional contracts for monetary systems without treating implementation choices as proof of legal compliance.",
+  "checks": [
+    {
+      "id": "amount-unit-and-range",
+      "question": "Does each authoritative amount preserve its currency or instrument unit and required precision across arithmetic, parsing, serialization, and storage?",
+      "applicability": "Amount types, exchange conversions, external API adapters, database columns, numeric casts, and arithmetic changes.",
+      "valid_counterexamples": ["Checked integer minor-unit arithmetic can be appropriate when scale and range are explicit.", "Binary floating point can be suitable for statistical risk models or approximate analytics with a defined error tolerance and a controlled boundary to booked amounts.", "A protocol can encode amounts as decimal strings when parsing validates their unit, scale, and range."],
+      "evidence_needed": ["Required units, supported currencies or assets, scale rules, and maximum intermediate values.", "Every conversion through JSON, database types, floating-point intermediates, or narrowing casts.", "Overflow, invalid-value, mixed-currency, and round-trip tests at numerical boundaries."],
+      "not_a_rule": ["Currencies and financial instruments do not all have the same decimal scale.", "A decimal crate does not automatically prevent overflow, truncation, or unit mismatches.", "Financial software does not universally forbid floating-point calculations."],
+      "source_ids": ["actionbook/rust-skills:domain-fintech"]
+    },
+    {
+      "id": "rounding-and-residual-policy",
+      "question": "Are rounding mode, timing, and residual allocation defined so that fees, conversions, refunds, and split payments reconcile according to the product's accounting contract?",
+      "applicability": "Tax or fee computation, rate multiplication, amount quantization, allocation across accounts, refunds, and aggregation order.",
+      "valid_counterexamples": ["A contract may explicitly round every line item rather than round only the final total.", "An exact minor-unit transfer with no division or conversion may need no additional rounding step.", "Display-only rounding can differ from settlement rounding if displayed and authoritative values remain distinguishable."],
+      "evidence_needed": ["Specified rounding mode and scale at each business boundary, including negative values and ties.", "Ordering of aggregation versus rounding and the treatment of leftover smallest units.", "Examples covering partial refunds, repeated splits, extreme rates, and reconciliation of component totals."],
+      "not_a_rule": ["One rounding mode is not correct for every product or jurisdiction.", "Using more decimal places does not remove the need for a settlement policy.", "A rounded display value should not silently replace a higher-precision authoritative value."],
+      "source_ids": ["actionbook/rust-skills:domain-fintech"]
+    },
+    {
+      "id": "duplicate-and-partial-transaction",
+      "question": "Can concurrent submissions, retries after an unknown result, or a crash between steps produce a duplicate monetary effect or an unreconciled partial posting?",
+      "applicability": "Payment commands, ledger posting, webhook consumers, transaction boundaries, idempotency keys, and external-provider calls.",
+      "valid_counterexamples": ["Distinct authorized transfers must remain distinct even when their amounts and recipients match.", "A cross-system workflow may use durable intermediate states and reconciliation rather than a single database transaction.", "Read-only pricing queries do not require a monetary-effect deduplication record."],
+      "evidence_needed": ["Operation identity, key scope, retention, and rejection of the same key with a different payload.", "Atomicity between deduplication records and local monetary effects, including concurrent duplicates.", "Crash points around provider calls and acknowledgements, plus recovery and ledger-invariant tests."],
+      "not_a_rule": ["Retries or unique request IDs alone do not establish exactly-once effects.", "A local database transaction cannot automatically roll back a remote payment.", "Ledger balancing must be interpreted under the system's account and currency model, not by summing unlike units."],
+      "source_ids": ["actionbook/rust-skills:domain-fintech"]
+    },
+    {
+      "id": "reconstructable-financial-history",
+      "question": "Can an operator reconstruct the accepted transaction and any correction from durable records without relying on mutable in-memory values or leaking sensitive data into diagnostics?",
+      "applicability": "Transaction persistence, administrative corrections, audit events, trace logging, reconciliation tooling, and retention changes.",
+      "valid_counterexamples": ["A mutable balance projection can be valid when authoritative history permits reconstruction.", "Redacted operational logs can coexist with access-controlled authoritative transaction records.", "A correction can be represented by a linked compensating entry instead of rewriting the original event."],
+      "evidence_needed": ["Persisted operation identifiers, relevant inputs or versions, timestamps, outcomes, and correction relationships.", "Consistency between committed business state and history records, including failures during audit-record creation.", "Access controls, retention and redaction policy, and a demonstrated reconstruction or reconciliation path."],
+      "not_a_rule": ["Arc provides shared ownership, not durable immutability or an audit trail.", "Event sourcing and structured logging are not, by themselves, evidence of regulatory compliance.", "Traceability does not require recording secrets or unrestricted full payloads."],
+      "source_ids": ["actionbook/rust-skills:domain-fintech"]
+    }
+  ],
+  "sources": [
+    {
+      "kind": "external_skill",
+      "source_id": "actionbook/rust-skills:domain-fintech",
+      "repository": "actionbook/rust-skills",
+      "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94",
+      "path": "skills/domain-fintech/SKILL.md",
+      "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/domain-fintech/SKILL.md",
+      "title": "Financial domain",
+      "transformation": "independent_synthesis"
+    }
+  ]
+}

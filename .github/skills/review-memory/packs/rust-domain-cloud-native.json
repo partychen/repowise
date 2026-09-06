@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "id": "rust-domain-cloud-native",
+  "title": "Rust distributed service operation",
+  "tags": ["rust", "cloud native", "kubernetes", "k8s", "container", "grpc", "tonic", "tower", "kube", "tokio", "tracing", "opentelemetry", "retry", "shutdown", "microservice", "graceful shutdown"],
+  "language": "rust",
+  "authority": "reference",
+  "summary": "Review service behavior under ambiguous failures, termination, overload, and replacement of deployed instances.",
+  "checks": [
+    {
+      "id": "retry-effect-and-budget",
+      "question": "When a remote result is unknown, can a retry duplicate a committed effect or amplify an outage beyond the caller's remaining deadline?",
+      "applicability": "RPC clients, service middleware, controller reconciliation, failover, and newly introduced timeout or retry policies.",
+      "valid_counterexamples": ["A read-only operation may safely be retried within a bounded budget.", "A server that durably deduplicates a stable operation identifier can permit retries of a mutation.", "A non-repeatable operation can deliberately surface an uncertain outcome for later reconciliation instead of retrying."],
+      "evidence_needed": ["Which failures prove non-execution versus leave execution ambiguous.", "Idempotency mechanism, identifier lifetime, and behavior for concurrent duplicate attempts.", "Attempt limits, jitter/backoff, deadline propagation, and retries already present in proxies or client libraries."],
+      "not_a_rule": ["Retries alone do not provide exactly-once effects.", "A timeout does not prove that the remote operation was cancelled.", "Transient-looking errors are not sufficient evidence that a mutation is safe to repeat."],
+      "source_ids": ["actionbook/rust-skills:domain-cloud-native"]
+    },
+    {
+      "id": "deployment-shutdown-sequence",
+      "question": "Does the actual deployment termination event stop admission and settle or relinquish in-flight work before the platform's termination grace period expires?",
+      "applicability": "Server startup/shutdown, worker leases, signal handling, readiness changes, and deployment lifecycle configuration.",
+      "valid_counterexamples": ["Disposable read-only work may be cancelled immediately when clients have a documented retry path.", "A finite batch job can use a completion/checkpoint contract rather than drain HTTP connections.", "A deployment outside Unix containers may require a platform-specific event instead of SIGTERM."],
+      "evidence_needed": ["Signals or supervisor events actually delivered and whether the process receives them.", "Ordering of readiness withdrawal, listener closure, producer shutdown, task joining, and connection-pool release.", "Shutdown deadline, unfinished work disposition, and lease or acknowledgement handling on forced termination."],
+      "not_a_rule": ["Handling Ctrl+C alone does not establish that container termination is handled.", "Waiting forever for graceful completion is not a bounded shutdown strategy.", "Draining connections alone cannot promise zero-downtime deployment."],
+      "source_ids": ["actionbook/rust-skills:domain-cloud-native"]
+    },
+    {
+      "id": "overload-resource-accounting",
+      "question": "Under sustained overload or a slow dependency, are queued requests, spawned work, connections, and telemetry bounded together rather than merely moved between queues?",
+      "applicability": "Fan-out, task spawning, connection pools, middleware buffers, exporters, request-size changes, and concurrency limits.",
+      "valid_counterexamples": ["An independently enforced upstream admission bound can make an internal unbounded queue effectively finite.", "A low-volume administrative path can have a different budget from the data plane.", "Telemetry may be sampled or dropped according to an explicit operational policy."],
+      "evidence_needed": ["Per-instance memory and concurrency budgets under realistic request sizes.", "All queue capacities, waiting tasks, pool waiters, and retry amplification along the path.", "Overload response, cancellation cleanup, and measurements or load tests for slow downstreams."],
+      "not_a_rule": ["A bounded channel does not bound tasks created before sending into it.", "Autoscaling is not immediate admission control.", "Every request need not produce an unsampled exported trace."],
+      "source_ids": ["actionbook/rust-skills:domain-cloud-native"]
+    },
+    {
+      "id": "replacement-state-and-health",
+      "question": "After an instance is replaced or loses a dependency, do its state assumptions and health signals cause the orchestrator to take the intended action?",
+      "applicability": "Local caching or persistence, configuration loading, readiness/liveness endpoints, startup initialization, and replica scaling.",
+      "valid_counterexamples": ["A stateful workload can intentionally use persistent volumes with a defined recovery and ownership protocol.", "Rebuildable caches and scratch files are legitimate local state.", "A service with degraded functionality may intentionally remain ready for routes that do not require the failed dependency."],
+      "evidence_needed": ["State that must survive replacement versus state that can be reconstructed.", "Storage, lease, migration, and configuration assumptions when replicas overlap or restart.", "Separate meanings of startup, readiness, and liveness, including dependency-failure and restart-loop tests."],
+      "not_a_rule": ["Cloud deployment does not prohibit local persistent storage.", "A failed dependency need not make the process unhealthy enough to restart.", "Environment variables are one configuration mechanism, not the only acceptable one."],
+      "source_ids": ["actionbook/rust-skills:domain-cloud-native"]
+    }
+  ],
+  "sources": [
+    {
+      "kind": "external_skill",
+      "source_id": "actionbook/rust-skills:domain-cloud-native",
+      "repository": "actionbook/rust-skills",
+      "revision": "5c40d3ad785193231b7d0dbfb8e1eb447e5edd94",
+      "path": "skills/domain-cloud-native/SKILL.md",
+      "url": "https://github.com/actionbook/rust-skills/blob/5c40d3ad785193231b7d0dbfb8e1eb447e5edd94/skills/domain-cloud-native/SKILL.md",
+      "title": "Cloud-native domain",
+      "transformation": "independent_synthesis"
+    }
+  ]
+}
