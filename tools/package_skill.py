@@ -35,7 +35,6 @@ def build_archive(project: Path, output: Path) -> dict:
         if not source.resolve().is_relative_to(skill.resolve()):
             raise ValueError(f"Release source escaped the skill directory: {relative}")
         members["review-memory/" + relative.as_posix()] = source.read_bytes()
-    members["review-memory/THIRD_PARTY.md"] = (project / "THIRD_PARTY.md").read_bytes()
     buffer = BytesIO()
     with ZipFile(buffer, "w", compression=ZIP_DEFLATED) as archive:
         for name, content in sorted(members.items()):

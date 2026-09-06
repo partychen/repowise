@@ -23,7 +23,6 @@ class PortabilityTests(unittest.TestCase):
             shutil.copytree(PROJECT / ".github" / "skills" / "review-memory", skill,
                             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
             shutil.copy2(PROJECT / "pyproject.toml", source / "pyproject.toml")
-            shutil.copy2(PROJECT / "THIRD_PARTY.md", source / "THIRD_PARTY.md")
             (skill / ".review" / "local").mkdir(parents=True)
             (skill / ".review" / "local" / "secret.json").write_text('{"private":true}')
             (skill / "scripts" / "unexpected.log").write_text("local diagnostic")

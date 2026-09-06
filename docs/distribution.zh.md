@@ -87,7 +87,7 @@ python .\tools\package_skill.py
 python -m pip wheel . --no-deps --wheel-dir .\dist
 ```
 
-0.3.0 的 Skill 附件是 `review-memory-skill-0.3.0.zip` 及 `.zip.sha256`。
+Skill ZIP 和校验文件使用 `pyproject.toml` 中的版本号命名。
 ZIP 使用明确文件清单，包含依赖声明，不包含虚拟环境、私有项目数据或机器缓存；
 解压后的整个 `review-memory` 目录也可手动放到宿主认可的 Skill 目录。
 

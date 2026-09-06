@@ -1,4 +1,4 @@
-include README.md README.zh.md THIRD_PARTY.md AGENTS.md
+include README.md README.zh.md AGENTS.md
 include .github/skills/review-memory/SKILL.md
 include .github/skills/review-memory/requirements.txt
 include .github/skills/review-memory/references/*.md

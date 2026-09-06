@@ -116,4 +116,3 @@ data. `.review/local` is ignored by Git by default to keep raw review data priva
 - [Synchronization workflow](.github/skills/review-memory/references/sync.md)
 - [Knowledge approval](.github/skills/review-memory/references/approval.md)
 - [Code review](.github/skills/review-memory/references/review.md)
-- [Sources and licensing](THIRD_PARTY.md)

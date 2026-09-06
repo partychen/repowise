@@ -109,4 +109,3 @@ gh auth login
 - [同步流程](.github/skills/review-memory/references/sync.md)
 - [知识审批](.github/skills/review-memory/references/approval.md)
 - [代码审查](.github/skills/review-memory/references/review.md)
-- [来源与许可说明](THIRD_PARTY.md)

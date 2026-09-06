@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "review-memory"
-version = "0.3.0"
+version = "0.0.1"
 description = "Evidence-backed, human-approved repository review knowledge"
 readme = "README.md"
 requires-python = ">=3.11"
