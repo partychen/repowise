@@ -18,7 +18,7 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).resolve()
 SKILL = SCRIPT.parents[1]
-CACHE_SCHEMA = 1
+CACHE_SCHEMA = 2
 VENV_TIMEOUT = 120
 INSTALL_TIMEOUT = 120
 PROBE_TIMEOUT = 30
@@ -33,11 +33,26 @@ def requirements():
     content = path.read_bytes()
     declared = [line.strip() for line in content.decode("utf-8").splitlines()
                 if line.strip() and not line.lstrip().startswith("#")]
-    if len(declared) != 1 or not re.fullmatch(r"PyYAML==6\.\d+\.\d+", declared[0]):
-        raise LauncherError("The installed Skill must declare exactly one pinned PyYAML 6.x dependency.")
-    if tuple(int(part) for part in declared[0].split("==")[1].split(".")) < (6, 0, 2):
+    match = re.fullmatch(r"PyYAML==(6\.\d+\.\d+) --hash=sha256:([a-f0-9]{64})",
+                         declared[0]) if len(declared) == 1 else None
+    if match is None:
+        raise LauncherError("The installed Skill must declare exactly one pinned PyYAML 6.x "
+                            "dependency with its bundled wheel's SHA256 hash.")
+    version, expected_hash = match.groups()
+    if tuple(int(part) for part in version.split(".")) < (6, 0, 2):
         raise LauncherError("The pinned PyYAML version must be at least 6.0.2.")
-    return path, content, declared[0].split("==")[1]
+    wheel = SKILL / "wheels" / f"pyyaml-{version}-py3-none-any.whl"
+    recovery = "Reinstall the complete Skill from a trusted source; setup never downloads dependencies."
+    for resource in (wheel.parent, wheel):
+        if resource.is_symlink() or (hasattr(resource, "is_junction") and resource.is_junction()):
+            raise LauncherError(f"Bundled dependency cannot be a symlink or junction: {resource}. {recovery}")
+    try:
+        actual_hash = hashlib.sha256(wheel.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise LauncherError(f"Bundled PyYAML wheel is missing or unreadable: {wheel}. {recovery}") from exc
+    if actual_hash != expected_hash:
+        raise LauncherError(f"Bundled PyYAML wheel failed SHA256 verification: {wheel}. {recovery}")
+    return path, content, version
 
 
 def cache_key(content):
@@ -178,10 +193,10 @@ def setup(environment, key, requirement_path, version):
                 checked_run([
                     str(environment_python(environment)), "-I", "-m", "pip", "--isolated",
                     "--disable-pip-version-check", "install", "--no-input", "--no-deps",
-                    "--only-binary=:all:", "--index-url", "https://pypi.org/simple",
-                    "--timeout", "15", "--retries", "1",
+                    "--no-index", "--no-cache-dir", "--only-binary=:all:", "--require-hashes",
+                    "--find-links", str(requirement_path.parent / "wheels"),
                     "--requirement", str(requirement_path),
-                ], cwd=environment, stage=f"Installing pinned PyYAML {version}",
+                ], cwd=environment, stage=f"Installing bundled PyYAML {version} offline",
                     timeout=INSTALL_TIMEOUT)
                 probe_environment(environment, version)
                 (environment / "ready.json").write_text(
@@ -229,7 +244,8 @@ def main(argv=None):
         environment = cache_root(argv) / key
         if argv and argv[0] == "setup":
             if argv[1:] in (["--help"], ["-h"]):
-                print("setup: prepare/reuse a private cached virtualenv with the Skill's pinned dependency.")
+                print("setup: prepare/reuse a private cached virtualenv using only the Skill's "
+                      "bundled, hash-verified dependency wheel; no network downloads.")
                 return 0
             if len(argv) != 1:
                 raise LauncherError("setup takes no arguments.")

@@ -8,7 +8,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import venv
 from pathlib import Path
 from unittest.mock import patch
 
@@ -32,6 +31,7 @@ class LauncherTests(unittest.TestCase):
         self.skill = self.directory / "installed skill"
         (self.skill / "scripts").mkdir(parents=True)
         shutil.copy2(SKILL / "requirements.txt", self.skill / "requirements.txt")
+        shutil.copytree(SKILL / "wheels", self.skill / "wheels")
         shutil.copy2(SKILL / "scripts" / "main.py", self.skill / "scripts" / "main.py")
         self.launcher = load_launcher(self.skill / "scripts" / "main.py")
         self.cache = self.directory / "cache"
@@ -84,7 +84,8 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual(result, 0, error)
         self.assertIn("runtime ready", output)
         self.assertIn("Creating isolated virtualenv", error)
-        self.assertIn("Installing pinned PyYAML", error)
+        self.assertIn("Installing bundled PyYAML", error)
+        self.assertIn("offline", error)
         self.assertIn("Checking cached Python and PyYAML complete", error)
         self.assertEqual(len(calls), 3)
         self.assertEqual(calls[0][0], [sys.executable, "-I", "-m", "venv", str(self.environment)])
@@ -92,8 +93,13 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("--no-deps", install)
         self.assertIn("--only-binary=:all:", install)
         self.assertIn("--isolated", install)
-        self.assertEqual(install[install.index("--timeout") + 1], "15")
-        self.assertEqual(install[install.index("--retries") + 1], "1")
+        self.assertIn("--no-index", install)
+        self.assertIn("--no-cache-dir", install)
+        self.assertIn("--require-hashes", install)
+        self.assertEqual(install[install.index("--find-links") + 1], str(self.skill / "wheels"))
+        self.assertFalse(any("https://" in argument or "http://" in argument for argument in install))
+        self.assertNotIn("--index-url", install)
+        self.assertNotIn("--extra-index-url", install)
         self.assertEqual([kwargs["timeout"] for _, kwargs in calls],
                          [self.launcher.VENV_TIMEOUT, self.launcher.INSTALL_TIMEOUT,
                           self.launcher.PROBE_TIMEOUT])
@@ -195,7 +201,8 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("validation failed", error)
 
     def test_dangling_environment_link_is_not_followed_during_setup(self):
-        with patch.object(self.launcher.Path, "is_symlink", return_value=True), \
+        with patch.object(self.launcher.Path, "is_symlink", autospec=True,
+                          side_effect=lambda path: path == self.environment), \
                 patch.object(self.launcher.subprocess, "run") as run:
             result, _, error = self.call("setup")
         self.assertEqual(result, 2)
@@ -213,11 +220,55 @@ class LauncherTests(unittest.TestCase):
     def test_only_supported_pinned_dependency_is_accepted(self):
         for content in ("PyYAML>=6", "PyYAML==6.0.3\nrequests==1.0.0",
                         "--index-url https://other.invalid\nPyYAML==6.0.3",
-                        "PyYAML==6.0.1", "PyYAML==7.0.0"):
+                        "PyYAML==6.0.3",
+                        "PyYAML==6.0.3 --hash=sha256:invalid",
+                        "PyYAML==6.0.1 --hash=sha256:" + "0" * 64,
+                        "PyYAML==7.0.0 --hash=sha256:" + "0" * 64,
+                        "PyYAML==6.0.3 --hash=sha256:" + "0" * 64 + " --trusted-host example.org"):
             with self.subTest(content=content):
                 self.requirement.write_text(content)
                 with self.assertRaises(self.launcher.LauncherError):
                     self.launcher.requirements()
+
+    def test_missing_or_modified_bundle_fails_before_creating_runtime(self):
+        wheel = self.skill / "wheels" / f"pyyaml-{self.version}-py3-none-any.whl"
+        original = wheel.read_bytes()
+        for mode in ("missing", "modified"):
+            with self.subTest(mode=mode):
+                if mode == "missing":
+                    wheel.unlink()
+                else:
+                    wheel.write_bytes(original + b"tampered")
+                with patch.object(self.launcher.subprocess, "run") as run:
+                    result, _, error = self.call("setup")
+                self.assertEqual(result, 2)
+                self.assertIn("Reinstall the complete Skill", error)
+                self.assertIn("setup never downloads", error)
+                self.assertFalse(self.cache.exists())
+                run.assert_not_called()
+                wheel.write_bytes(original)
+
+    def test_bundle_hash_mismatch_is_not_bypassed_by_a_ready_cache(self):
+        self.fake_environment()
+        wheel = self.skill / "wheels" / f"pyyaml-{self.version}-py3-none-any.whl"
+        wheel.write_bytes(wheel.read_bytes() + b"tampered")
+        with patch.object(self.launcher.subprocess, "run") as run:
+            result, _, error = self.call("doctor")
+        self.assertEqual(result, 2)
+        self.assertIn("SHA256 verification", error)
+        run.assert_not_called()
+
+    def test_linked_dependency_directory_or_wheel_is_rejected(self):
+        wheel = self.skill / "wheels" / f"pyyaml-{self.version}-py3-none-any.whl"
+        for resource in (wheel.parent, wheel):
+            with self.subTest(resource=resource), \
+                    patch.object(self.launcher.Path, "is_symlink", autospec=True,
+                                 side_effect=lambda path: path == resource), \
+                    patch.object(self.launcher.subprocess, "run") as run:
+                result, _, error = self.call("setup")
+                self.assertEqual(result, 2)
+                self.assertIn("Bundled dependency cannot be a symlink or junction", error)
+                run.assert_not_called()
 
     def test_cache_cannot_be_relative_or_inside_source_or_target(self):
         for root in ("relative cache", str(self.skill / "cache"), str(self.target / "cache")):
@@ -262,36 +313,16 @@ class LauncherTests(unittest.TestCase):
 class InstalledLauncherTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        import yaml
-
         temporary = tempfile.TemporaryDirectory(dir=PROJECT)
         cls.addClassCleanup(temporary.cleanup)
         cls.directory = Path(temporary.name).resolve()
         cls.skill = cls.directory / "installed skill with spaces"
         shutil.copytree(SKILL, cls.skill, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         cls.launcher = load_launcher(cls.skill / "scripts" / "main.py")
-        _, content, version = cls.launcher.requirements()
-        if yaml.__version__ != version:
-            raise unittest.SkipTest("Offline launcher integration requires the declared PyYAML version.")
+        _, content, _ = cls.launcher.requirements()
         cls.key = cls.launcher.cache_key(content)
         cls.cache = cls.directory / "user cache"
         cls.environment = cls.cache / cls.key
-        venv.EnvBuilder(with_pip=False).create(cls.environment)
-        python = cls.launcher.environment_python(cls.environment)
-        result = subprocess.run(
-            [str(python), "-I", "-c", "import sysconfig; print(sysconfig.get_path('purelib'))"],
-            capture_output=True, text=True, check=True)
-        site = Path(result.stdout.strip())
-        # Populate a test-only runtime from the already installed dependency; no network or pip.
-        shutil.copytree(Path(yaml.__file__).parent, site / "yaml",
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        (site / "review_memory").mkdir()
-        (site / "review_memory" / "__init__.py").write_text(
-            'raise RuntimeError("Unrelated global package executed")')
-        (site / "review_memory.py").write_text('raise RuntimeError("Unrelated global module executed")')
-        (cls.environment / "ready.json").write_text(json.dumps({
-            "key": cls.key, "environment": str(cls.environment),
-        }))
         cls.target = cls.directory / "untrusted PR"
         cls.target.mkdir()
         for name in ("review_memory.py", "yaml.py", "sitecustomize.py", "usercustomize.py"):
@@ -301,6 +332,26 @@ class InstalledLauncherTests(unittest.TestCase):
             'raise RuntimeError("Untrusted project package executed")')
         cls.env = dict(os.environ, REVIEW_MEMORY_CACHE=str(cls.cache),
                        PYTHONPATH=str(cls.target), PYTHONHOME=str(cls.target))
+        # A fresh cache and unreachable proxies exercise real setup without PyPI or pip-cache access.
+        for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+                     "http_proxy", "https_proxy", "all_proxy"):
+            cls.env[name] = "http://127.0.0.1:1"
+        cls.env.update(NO_PROXY="", no_proxy="", PIP_INDEX_URL="https://untrusted.invalid/simple")
+        result = subprocess.run(
+            [sys.executable, "-I", str(cls.skill / "scripts" / "main.py"), "setup"],
+            cwd=cls.target, env=cls.env, capture_output=True, text=True, timeout=300)
+        if result.returncode:
+            raise AssertionError(result.stdout + result.stderr)
+        cls.launcher.require_ready(cls.environment, cls.key)
+        python = cls.launcher.environment_python(cls.environment)
+        result = subprocess.run(
+            [str(python), "-I", "-c", "import sysconfig; print(sysconfig.get_path('purelib'))"],
+            capture_output=True, text=True, check=True)
+        site = Path(result.stdout.strip())
+        (site / "review_memory").mkdir()
+        (site / "review_memory" / "__init__.py").write_text(
+            'raise RuntimeError("Unrelated global package executed")')
+        (site / "review_memory.py").write_text('raise RuntimeError("Unrelated global module executed")')
 
     def invoke(self, *args, script=None):
         return subprocess.run(

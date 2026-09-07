@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import sys
 import tomllib
@@ -14,6 +15,16 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 PROJECT = Path(__file__).resolve().parents[1]
 
 
+def source_bytes(skill: Path, source: Path) -> bytes:
+    relative = source.relative_to(skill)
+    ancestors = [source, *source.parents[:len(relative.parts)]]
+    if any(path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()) for path in ancestors):
+        raise ValueError(f"Release source cannot be a symlink or junction: {relative}")
+    if not source.resolve().is_relative_to(skill.resolve()):
+        raise ValueError(f"Release source escaped the skill directory: {relative}")
+    return source.read_bytes()
+
+
 def build_archive(project: Path, output: Path) -> dict:
     project = project.resolve()
     metadata = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))
@@ -21,20 +32,37 @@ def build_archive(project: Path, output: Path) -> dict:
     if not isinstance(version, str) or not re.fullmatch(r"[0-9A-Za-z.+-]+", version):
         raise ValueError("Version cannot be used as a release filename.")
     skill = project / ".github" / "skills" / "review-memory"
+    provenance_path = skill / "wheels" / "provenance.json"
+    provenance_content = source_bytes(skill, provenance_path)
+    provenance = json.loads(provenance_content)
+    wheel = provenance.get("wheel") if isinstance(provenance, dict) else None
+    if (not isinstance(wheel, dict) or not isinstance(wheel.get("filename"), str)
+            or not isinstance(wheel.get("sha256"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", wheel["sha256"])):
+        raise ValueError("Bundled dependency provenance must identify a wheel and its SHA256.")
+    wheel_match = re.fullmatch(r"pyyaml-(6\.\d+\.\d+)-py3-none-any\.whl", wheel["filename"])
+    if (wheel_match is None or provenance.get("schema_version") != 1
+            or provenance.get("name") != "PyYAML" or provenance.get("license") != "MIT"
+            or provenance.get("version") != wheel_match.group(1)):
+        raise ValueError("Bundled dependency must be the pinned pure-Python PyYAML wheel with MIT provenance.")
     required = [skill / "SKILL.md", skill / "requirements.txt",
-                skill / "scripts" / "main.py", skill / "packs" / "__init__.py"]
+                skill / "scripts" / "main.py", skill / "packs" / "__init__.py",
+                provenance_path, skill / "wheels" / "LICENSE.PyYAML.txt",
+                skill / "wheels" / wheel["filename"]]
     paths = list(required)
     for pattern in ("references/*.md", "packs/*.json", "packs/sources/*.json", "scripts/review_memory/*.py"):
         paths.extend(skill.glob(pattern))
     members = {}
     for source in sorted(set(paths)):
         relative = source.relative_to(skill)
-        ancestors = [source, *source.parents[:len(relative.parts)]]
-        if any(path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()) for path in ancestors):
-            raise ValueError(f"Release source cannot be a symlink or junction: {relative}")
-        if not source.resolve().is_relative_to(skill.resolve()):
-            raise ValueError(f"Release source escaped the skill directory: {relative}")
-        members["review-memory/" + relative.as_posix()] = source.read_bytes()
+        members["review-memory/" + relative.as_posix()] = (
+            provenance_content if source == provenance_path else source_bytes(skill, source))
+    if hashlib.sha256(members["review-memory/wheels/" + wheel["filename"]]).hexdigest() != wheel["sha256"]:
+        raise ValueError("Bundled dependency hash differs from its recorded provenance.")
+    requirements = members["review-memory/requirements.txt"].decode("utf-8").splitlines()
+    declared = [line.strip() for line in requirements if line.strip() and not line.lstrip().startswith("#")]
+    if declared != [f"PyYAML=={provenance['version']} --hash=sha256:{wheel['sha256']}"]:
+        raise ValueError("Bundled dependency version/hash differs from requirements.txt.")
     buffer = BytesIO()
     with ZipFile(buffer, "w", compression=ZIP_DEFLATED) as archive:
         for name, content in sorted(members.items()):

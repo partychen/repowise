@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "name": "PyYAML",
+  "version": "6.0.3",
+  "license": "MIT",
+  "wheel": {
+    "filename": "pyyaml-6.0.3-py3-none-any.whl",
+    "sha256": "3e7188b69b8092b15f4a56741cb8650f220379b737df8d0ecb9aa2a794a216ec",
+    "size_bytes": 45373,
+    "tag": "py3-none-any",
+    "requires_python": ">=3.8",
+    "requires_dist": [],
+    "is_official_pypi_download": false
+  },
+  "license_details": {
+    "spdx": "MIT",
+    "copyright": [
+      "Copyright (c) 2017-2021 Ingy döt Net",
+      "Copyright (c) 2006-2016 Kirill Simonov"
+    ],
+    "upstream_url": "https://raw.githubusercontent.com/yaml/pyyaml/49790e73684bebad1df05ef8d828fa12f685bffb/LICENSE",
+    "file": "LICENSE.PyYAML.txt",
+    "wheel_member": "pyyaml-6.0.3.dist-info/LICENSE",
+    "sha256": "8d3928f9dc4490fd635707cb88eb26bd764102a7282954307d3e5167a577e8a4",
+    "redistribution": "The complete upstream MIT license, including both copyright notices and the warranty disclaimer, is preserved verbatim in both locations."
+  },
+  "source": {
+    "kind": "official-github-commit-archive",
+    "repository": "https://github.com/yaml/pyyaml",
+    "tag": "6.0.3",
+    "commit": "49790e73684bebad1df05ef8d828fa12f685bffb",
+    "tree": "cc3c38cf19e65d75cecde7f40e0144813e480ce1",
+    "commit_timestamp": "2025-09-25T21:10:45Z",
+    "archive_filename": "pyyaml-6.0.3-github-49790e73684bebad1df05ef8d828fa12f685bffb.tar.gz",
+    "url": "https://codeload.github.com/yaml/pyyaml/tar.gz/49790e73684bebad1df05ef8d828fa12f685bffb",
+    "sha256": "9a1805b064ab6973ed8903ef46ee9a67e59a982c637f410c6561d81a4387bd8a",
+    "size_bytes": 124547,
+    "verification": [
+      "The official PyPI 6.0.3 release metadata identifies https://github.com/yaml/pyyaml as its source repository and MIT as its license.",
+      "The official GitHub refs/tags/6.0.3 API resolved to the immutable commit recorded above. GitHub reported that commit's signature as verified; no independent local signature verification was performed.",
+      "The archive was downloaded directly from GitHub over certificate-verified HTTPS. Its SHA256 was computed locally, not taken from a claimed upstream checksum publication.",
+      "All 641 regular archive files were checked against their Git blob IDs in the official immutable Git tree; the file sets matched exactly.",
+      "The license and build configuration were reviewed before building. No upstream library source code was edited."
+    ],
+    "pypi_reference": {
+      "metadata_url": "https://pypi.org/pypi/PyYAML/6.0.3/json",
+      "sdist_url": "https://files.pythonhosted.org/packages/05/8e/961c0007c59b8dd7729d542c61a4d537767a59645b82a0b521206e1e25c2/pyyaml-6.0.3.tar.gz",
+      "sdist_sha256": "d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f",
+      "used_as_build_input": false,
+      "reason": "The PyPI file host failed TLS handshakes in the build environment. The build used the separately identified official GitHub source archive instead, without disabling TLS verification or changing network security settings."
+    }
+  },
+  "build": {
+    "purpose": "Maintainer-only preparation of a prebuilt dependency. Skill setup installs the wheel offline and never runs this build.",
+    "backend": "The unmodified upstream packaging/_pyyaml_pep517.py bridge to setuptools.build_meta.",
+    "host": {
+      "operating_system": "Windows",
+      "architecture": "AMD64",
+      "python_implementation": "CPython",
+      "python_version": "3.10.11",
+      "zlib_version": "1.2.13",
+      "zlib_runtime_version": "1.2.13"
+    },
+    "tools": {
+      "build": "1.0.3",
+      "setuptools": "65.5.0",
+      "wheel": "0.45.1",
+      "packaging": "23.1",
+      "pyproject_hooks": "1.0.0",
+      "pip": "23.0.1",
+      "Cython": "Not installed; the optional native extension was disabled."
+    },
+    "wheel_tool_source": {
+      "repository": "https://github.com/pypa/wheel",
+      "tag": "0.45.1",
+      "commit": "7855525de4093257e7bfb434877265e227356566",
+      "url": "https://codeload.github.com/pypa/wheel/tar.gz/7855525de4093257e7bfb434877265e227356566",
+      "sha256": "c6ce5552618ff7bcdc6a68f18b62a8a3d74b69034c4b648f84d3d06c4606da79",
+      "usage": "Unmodified official source exposed through a build-process-only PYTHONPATH. It is not bundled or installed into the user's global environment."
+    },
+    "environment": {
+      "PYYAML_FORCE_LIBYAML": "0",
+      "PYYAML_FORCE_CYTHON": "0",
+      "PYTHONHASHSEED": "0",
+      "SOURCE_DATE_EPOCH": "1758834645"
+    },
+    "transformations": [
+      "Build the release's existing pure-Python implementation using its own PYYAML_FORCE_LIBYAML=0 switch. No native extension, Cython output, compiler, or libyaml library is included.",
+      "Unpack the resulting PyYAML-6.0.3-py3-none-any.whl with wheel 0.45.1.",
+      "Normalize only the generated dist-info directory name from PyYAML-6.0.3.dist-info to pyyaml-6.0.3.dist-info; no Python modules, license text, METADATA, or WHEEL content are edited.",
+      "Repack with wheel 0.45.1, which generates the canonical lowercase wheel filename and a new, internally consistent RECORD. Renaming only the outer archive would not be sufficient."
+    ],
+    "recipe": {
+      "prerequisites": [
+        "Use a dedicated maintainer build workspace and the exact Python, zlib, and build-tool versions recorded above. The original build used a session-scoped venv with existing build tools visible, not a global package installation.",
+        "Obtain the source archives separately from the recorded official HTTPS URLs and verify their SHA256 values before extraction. The recipe itself performs no network fetching.",
+        "Extract the PyYAML archive into .\\pyyaml-source and the wheel-tool archive into .\\wheel-source. Do not reuse a dirty source tree or existing output directories.",
+        "Provide the build interpreter as $Python. All paths below are relative to the dedicated workspace, not to a target pull request.",
+        "The --skip-dependency-check option omits only the frontend's check for the unused declared Cython build dependency. The upstream backend still runs unchanged with libyaml explicitly disabled; this is not a runtime or approval-verification bypass."
+      ],
+      "powershell_commands": [
+        "$env:PYYAML_FORCE_LIBYAML = '0'",
+        "$env:PYYAML_FORCE_CYTHON = '0'",
+        "$env:PYTHONHASHSEED = '0'",
+        "$env:SOURCE_DATE_EPOCH = '1758834645'",
+        "$env:PYTHONPATH = (Resolve-Path '.\\wheel-source\\wheel-7855525de4093257e7bfb434877265e227356566\\src').Path",
+        "$env:TEMP = (Get-Location).Path; $env:TMP = $env:TEMP",
+        "& $Python -m build --wheel --no-isolation --skip-dependency-check --outdir '.\\raw-wheel' '.\\pyyaml-source\\pyyaml-49790e73684bebad1df05ef8d828fa12f685bffb'",
+        "& $Python -m wheel unpack '.\\raw-wheel\\PyYAML-6.0.3-py3-none-any.whl' --dest '.\\unpacked'",
+        "Rename-Item '.\\unpacked\\PyYAML-6.0.3\\PyYAML-6.0.3.dist-info' 'case-normalization'",
+        "Rename-Item '.\\unpacked\\PyYAML-6.0.3\\case-normalization' 'pyyaml-6.0.3.dist-info'",
+        "New-Item -ItemType Directory '.\\wheel-output'",
+        "& $Python -m wheel pack '.\\unpacked\\PyYAML-6.0.3' --dest-dir '.\\wheel-output'",
+        "Get-FileHash '.\\wheel-output\\pyyaml-6.0.3-py3-none-any.whl' -Algorithm SHA256"
+      ],
+      "reproducibility": "Two independently extracted, clean source builds and wheel-tool repacks in the recorded environment produced byte-for-byte identical canonical wheels. The timestamp is fixed to the upstream commit time. Exact byte reproducibility on other build hosts or tool versions is not claimed."
+    }
+  },
+  "validation": {
+    "archive_file_count": 23,
+    "unchanged_upstream_python_module_count": 18,
+    "contents": "Only yaml/*.py, the upstream _yaml/__init__.py compatibility shim, and five dist-info files (LICENSE, METADATA, WHEEL, top_level.txt, RECORD).",
+    "record": "All member paths, SHA256 digests, sizes, and the unhashed RECORD self-entry were checked; no missing, duplicate, or extra members.",
+    "excluded_content": [
+      "Native binaries and native build products",
+      ".pth files",
+      "Entry points, script payloads, executable startup hooks, or .data directories",
+      "Additional runtime dependencies",
+      "Build tools, source archives, caches, and test fixtures"
+    ],
+    "offline_install": "Installed successfully into separate clean Windows CPython 3.10.11 and 3.13.15 venvs using pip --isolated --no-index --no-deps --only-binary=:all: --require-hashes. pip check passed in both environments. A wrong SHA256 was rejected.",
+    "upstream_tests": {
+      "runner": "tests/legacy_tests/test_all.py against the installed wheel, not the source package",
+      "python": "CPython 3.10.11",
+      "test_count": 1283,
+      "failures": 0,
+      "errors": 0,
+      "notes": "The upstream schema tests reported 8 skipped load and 4 skipped dump fixtures. Native-extension tests are not collected when yaml.__with_libyaml__ is false."
+    },
+    "additional_runtime_validation": {
+      "python": "CPython 3.13.15",
+      "platform": "win_amd64",
+      "pip": "26.2.1",
+      "environment": "A separate clean venv; no packages were installed into the supplied base interpreter.",
+      "checks": [
+        "The hash-pinned canonical wheel installs offline and pip check reports no broken requirements.",
+        "PyYAML 6.0.3 imports only from the new venv, has no Requires-Dist entries, and reports yaml.__with_libyaml__ as false.",
+        "All 18 bundled Python source modules compile under Python 3.13.",
+        "Safe loading and dumping round-trip Unicode and standard scalar/container values.",
+        "Aliases preserve shared identity and multiple YAML documents load correctly.",
+        "Malformed YAML and Python object-construction tags are rejected by safe_load."
+      ]
+    },
+    "offline_binary_only_resolution": {
+      "python_versions": [
+        "3.11",
+        "3.14"
+      ],
+      "platforms": [
+        "win_amd64",
+        "macosx_11_0_arm64",
+        "manylinux_2_17_x86_64"
+      ],
+      "result": "pip selected and hash-verified the same py3-none-any artifact for all six combinations without an index or dependency resolution."
+    },
+    "limitations": [
+      "Cross-platform pip selection checks metadata and wheel compatibility, not execution on macOS or Linux.",
+      "The upstream dependency test suite ran on CPython 3.10.11; Python 3.13.15 additionally passed offline installation and parser smoke checks. Full Skill runtime integration tests are separate from this dependency validation."
+    ]
+  }
+}

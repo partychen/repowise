@@ -1,2 +1,2 @@
-# Installed only by the Skill's explicit isolated setup command.
-PyYAML==6.0.3
+# Installed offline from the bundled wheel by the Skill's isolated setup command.
+PyYAML==6.0.3 --hash=sha256:3e7188b69b8092b15f4a56741cb8650f220379b737df8d0ecb9aa2a794a216ec

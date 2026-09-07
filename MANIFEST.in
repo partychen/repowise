@@ -1,6 +1,9 @@
 include README.md README.zh.md AGENTS.md
 include .github/skills/review-memory/SKILL.md
 include .github/skills/review-memory/requirements.txt
+include .github/skills/review-memory/wheels/*.whl
+include .github/skills/review-memory/wheels/provenance.json
+include .github/skills/review-memory/wheels/LICENSE.PyYAML.txt
 include .github/skills/review-memory/references/*.md
 include .github/skills/review-memory/packs/__init__.py
 include .github/skills/review-memory/packs/*.json

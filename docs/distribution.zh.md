@@ -24,8 +24,9 @@ npx skills add partychen/review-memory --skill review-memory -a github-copilot -
 不需要另行安装 review-memory wheel，不需要另配模型 API Key。
 
 **安装命令本身不启动任务或后台服务。** 自动化发生在宿主执行 Skill 时。
-需要 Python 3.11+；在线同步还需要 GitHub CLI 和操作者已有的登录授权。
-依赖安装、网络读取仍遵守宿主的工具批准机制；不会偷偷安装 gh、申请权限或操作私钥。
+需要带 `venv`/`ensurepip` 的 Python 3.11+；在线同步还需要 GitHub CLI 和已有的登录授权。
+依赖准备只使用本地文件，仍遵守宿主的工具批准机制；下载 Skill 和读取 GitHub 仍需要联网。
+不会偷偷安装 gh、申请权限或操作私钥。
 
 ## 本地开发体验
 
@@ -44,6 +45,10 @@ npx skills add . --skill review-memory -a github-copilot -g --copy
 review-memory\
   SKILL.md
   requirements.txt
+  wheels\
+    pyyaml-6.0.3-py3-none-any.whl
+    LICENSE.PyYAML.txt
+    provenance.json
   scripts\
     main.py
     review_memory\
@@ -51,10 +56,22 @@ review-memory\
   packs\
 ```
 
-脚本、知识包和依赖声明随 Skill 一起安装。`main.py setup` 使用标准库创建用户缓存中的
-隔离环境，并准备固定依赖；日常命令执行当前 Skill 携带的代码，不能回退到全局同名模块。
-宿主负责这一步，不要求用户自己寻找路径和执行 pip。新机器需要重新准备依赖，
-不能直接复制虚拟环境；完全离线首次使用需事先提供可信依赖包。
+脚本、知识包、固定依赖 wheel 及其许可证和来源记录随 Skill 一起安装。
+`main.py setup` 使用标准库创建用户缓存中的隔离环境，**不访问 PyPI，直接安装本地 wheel**。
+`requirements.txt` 固定版本与 SHA256，启动器和 pip 都会校验哈希；
+安装不使用包索引、全局 pip 缓存、依赖解析或源码构建，也不会回退到其他下载源。
+纯 Python wheel 不需要编译器或特定平台的二进制文件。
+它由固定的上游 PyYAML 源码构建，并非冒充未经修改的官方 PyPI wheel；
+`wheels/provenance.json` 记录来源和构建信息，同时保留 MIT 许可证。
+
+日常命令执行当前 Skill 携带的代码，不能回退到全局同名模块。宿主负责准备环境，
+不要求用户自己寻找路径和执行 pip。新机器应重建环境，不能直接复制虚拟环境。
+依赖包缺失或哈希不符时，需要重新安装完整、可信的 Skill，不会临时联网补包。
+
+如果旧版曾在 `files.pythonhosted.org` 下载失败，更新助手实际加载位置的 Skill 后再运行
+`setup`。新依赖包会使用不同的缓存键，不复用旧版下载失败的环境。
+如果新的离线安装被中断，先确认没有进程使用对应目录，再按启动器提示修复那个具体目录
+或过期锁；不要清空整个缓存、删除项目知识或降低 TLS 安全性。
 
 项目数据在目标项目的 `.review` 中，不在 Skill 安装目录：
 
@@ -90,6 +107,11 @@ python -m pip wheel . --no-deps --wheel-dir .\dist
 Skill ZIP 和校验文件使用 `pyproject.toml` 中的版本号命名。
 ZIP 使用明确文件清单，包含依赖声明，不包含虚拟环境、私有项目数据或机器缓存；
 解压后的整个 `review-memory` 目录也可手动放到宿主认可的 Skill 目录。
+
+仓库/npx 安装、源码发行包和 Skill ZIP 都必须包含 wheel、许可证、来源记录，
+以及哈希匹配的依赖声明。更新依赖时，按来源记录中的构建方式生成并检查新的 wheel，
+同步更新哈希和来源信息。运行时或依赖变更导致已有绑定不匹配时，需要维护者重新审批，
+不能修改旧签名来迁就升级。
 
 发布前由项目所有者决定许可证，保留第三方来源声明，核对内容。
 本地打包不自动创建仓库、上传 GitHub Release 或发布 PyPI/npm。

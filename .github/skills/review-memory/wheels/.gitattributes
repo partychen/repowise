@@ -1,0 +1,4 @@
+.gitattributes text eol=lf
+*.whl binary
+LICENSE.PyYAML.txt text eol=lf
+provenance.json text eol=lf

@@ -41,12 +41,19 @@ class InstalledWorkflowTests(unittest.TestCase):
             skill = next(path.parent for path in matches if path.parent.name == "review-memory")
             self.assertTrue((skill / "requirements.txt").is_file())
             self.assertTrue((skill / "scripts" / "review_memory" / "sync.py").is_file())
+            provenance = json.loads((skill / "wheels" / "provenance.json").read_text(encoding="utf-8"))
+            self.assertTrue((skill / "wheels" / provenance["wheel"]["filename"]).is_file())
+            self.assertTrue((skill / "wheels" / "LICENSE.PyYAML.txt").is_file())
             moved = root / "relocated skill with spaces"
             shutil.copytree(skill, moved)
             shutil.rmtree(installation)
             runner = moved / "scripts" / "main.py"
             (target / "review_memory.py").write_text('raise RuntimeError("Untrusted target import")')
             env["PYTHONPATH"] = str(target)
+            for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+                         "http_proxy", "https_proxy", "all_proxy"):
+                env[name] = "http://127.0.0.1:1"
+            env.update(NO_PROXY="", no_proxy="", PIP_INDEX_URL="https://untrusted.invalid/simple")
 
             def invoke(*args, code=0):
                 completed = subprocess.run(
