@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
-from .common import Error, digest, load_json, load_yaml, lock, safe_path, utcnow, write_json, write_yaml
+from .common import (
+    Error, digest, load_json, load_yaml, lock, parse_yaml, safe_path, timestamp,
+    utcnow, write_json, write_yaml,
+)
 from .core import validate_config, validate_knowledge
 
 
-def prepare_candidates(root: Path, task: dict, response: dict) -> list[dict]:
+def _prepare_candidates(root: Path, task: dict, response: dict) -> tuple[list[dict], dict]:
     config = load_yaml(safe_path(root, ".review/config.yaml"))
     validate_config(config)
     if not isinstance(task, dict) or task.get("task_type") != "induce":
@@ -30,25 +34,44 @@ def prepare_candidates(root: Path, task: dict, response: dict) -> list[dict]:
     if not isinstance(evidence, list):
         raise Error("Induction task has no evidence list.")
     by_id = {}
+    available_at = {}
     for reference in evidence:
         if not isinstance(reference, dict):
             raise Error("Invalid evidence bundle.")
         if "path" in reference:
+            if (not isinstance(reference["path"], str) or not reference["path"]
+                    or not isinstance(reference.get("evidence_id"), str) or not reference["evidence_id"].strip()):
+                raise Error("Evidence references require a path and nonempty evidence_id.")
             path = safe_path(root, reference["path"])
             if not path.is_relative_to(safe_path(root, ".review/local/raw/evidence")):
                 raise Error("Evidence references must stay in the local raw evidence directory.")
             bundle = load_json(path)
-            if digest(bundle) != reference.get("content_hash"):
+            if not isinstance(bundle, dict) or digest(bundle) != reference.get("content_hash"):
                 raise Error("Evidence content changed after the task was prepared.")
             if bundle.get("evidence_id") != reference.get("evidence_id"):
                 raise Error("Evidence ID does not match the task reference.")
         else:
             bundle = reference
         key = bundle.get("evidence_id") or bundle.get("bundle_id") or bundle.get("id")
-        if not isinstance(key, str) or key in by_id:
+        if not isinstance(key, str) or not key.strip() or key in by_id:
             raise Error("Evidence IDs must be unique nonempty strings.")
-        if bundle.get("repository") != task["repository"] or type(bundle.get("pr")) is not int:
+        if (bundle.get("repository") != task["repository"] or type(bundle.get("pr")) is not int
+                or bundle["pr"] < 1):
             raise Error("Evidence repository or PR identity is invalid.")
+        times = bundle.get("timestamps", {})
+        gaps = bundle.get("gaps", [])
+        observations = bundle.get("observations", [])
+        if (not isinstance(times, dict) or not isinstance(gaps, list)
+                or any(not isinstance(gap, str) for gap in gaps)
+                or not isinstance(observations, list)
+                or any(not isinstance(item, dict) or
+                       (item.get("body") is not None and not isinstance(item["body"], str))
+                       for item in observations)):
+            raise Error("Invalid evidence timestamps, coverage gaps or observations.")
+        available_at[key] = bundle.get("available_at") or times.get("observed_at") or task.get("created_at")
+        if available_at[key] is None:
+            raise Error("Evidence requires a bound availability timestamp; current time cannot replace missing evidence.")
+        timestamp(available_at[key])
         by_id[key] = bundle
     candidates = response.get("candidates")
     if not isinstance(candidates, list):
@@ -63,7 +86,8 @@ def prepare_candidates(root: Path, task: dict, response: dict) -> list[dict]:
             raise Error("Induction cannot approve knowledge.")
         validate_knowledge(item)
         references = item.pop("evidence_ids", None)
-        if not isinstance(references, list) or not references or any(ref not in by_id for ref in references):
+        if (not isinstance(references, list) or not references
+                or any(not isinstance(ref, str) or ref not in by_id for ref in references)):
             raise Error("Each candidate must cite evidence_ids from this task.")
         if len(set(references)) != len(references):
             raise Error("Duplicate evidence IDs do not count as independent support.")
@@ -73,7 +97,7 @@ def prepare_candidates(root: Path, task: dict, response: dict) -> list[dict]:
         non_history = [s for s in item.get("sources", []) if s.get("kind") != "history"]
         item["sources"] = non_history + [
             {"kind": "history", "reference": ref, "version": digest(by_id[ref]),
-             "available_at": by_id[ref].get("available_at") or by_id[ref].get("timestamps", {}).get("observed_at") or task.get("created_at") or utcnow()}
+             "available_at": available_at[ref]}
             for ref in references
         ]
         validate_knowledge(item)
@@ -84,7 +108,62 @@ def prepare_candidates(root: Path, task: dict, response: dict) -> list[dict]:
         prepared.append({"knowledge": item, "evidence_ids": references,
                          "observed_pr_count": len(prs), "independence": "unverified",
                          "adjudication": "unjudged"})
-    return prepared
+    return prepared, by_id
+
+
+def prepare_candidates(root: Path, task: dict, response: dict) -> list[dict]:
+    return _prepare_candidates(root, task, response)[0]
+
+
+def load_saved_proposal(root: Path, manifest_path: Path, *, expected_task: dict | None = None) -> dict:
+    """Revalidate saved induction, evidence and normalized candidate content, never an index."""
+    root = root.resolve()
+    try:
+        relative = manifest_path.relative_to(root) if manifest_path.is_absolute() else manifest_path
+        manifest_path = safe_path(root, relative)
+        if (manifest_path.name != "proposal.json"
+                or manifest_path.parent.parent != safe_path(root, ".review/local/proposals")):
+            raise Error("Expected a saved proposal manifest in the local proposals directory.")
+        manifest = load_json(manifest_path)
+        if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+            raise Error("Invalid saved proposal manifest.")
+        directory = manifest_path.parent.relative_to(root)
+        task = load_json(safe_path(root, directory / "task.json"))
+        response = load_json(safe_path(root, directory / "response.json"))
+        if (not isinstance(task, dict) or not isinstance(response, dict)
+                or (expected_task is not None and task != expected_task)
+                or not isinstance(task.get("task_id"), str) or not task["task_id"].strip()
+                or manifest.get("task_id") != task["task_id"]
+                or manifest.get("input_hash") != task.get("input_hash")
+                or digest(response) != manifest.get("response_hash")
+                or digest({"task": task, "response": response}) != manifest_path.parent.name
+                or manifest.get("model") != response.get("model")
+                or manifest.get("coverage_gaps") != task.get("coverage_gaps", task.get("gaps", []))
+                or manifest.get("status") != "awaiting_evidence_review_and_approval"):
+            raise Error("Saved proposal bindings changed; learning completion is not trusted.")
+        timestamp(manifest.get("created_at"))
+        if not isinstance(manifest.get("coverage_gaps"), list):
+            raise Error("Saved proposal coverage gaps must be a list.")
+        prepared, evidence = _prepare_candidates(root, task, response)
+        if manifest.get("candidates") != prepared:
+            raise Error("Saved candidate derivation differs from its bound evidence.")
+        candidates = []
+        for row in prepared:
+            knowledge = row["knowledge"]
+            path = safe_path(root, directory / f"{knowledge['id']}-r{knowledge['revision']}.yaml")
+            candidate_bytes = path.read_bytes()
+            if parse_yaml(candidate_bytes.decode("utf-8")) != knowledge:
+                raise Error("Saved candidate file differs from its proposal.")
+            candidates.append({
+                **row, "path": path, "content_hash": digest(knowledge),
+                "file_hash": hashlib.sha256(candidate_bytes).hexdigest(),
+            })
+        return {"path": manifest_path, "manifest": manifest, "task": task, "response": response,
+                "candidates": candidates, "evidence": evidence}
+    except (OSError, UnicodeError, TypeError, KeyError, ValueError, RecursionError) as exc:
+        if isinstance(exc, Error):
+            raise
+        raise Error(f"Invalid saved proposal {manifest_path}: {exc}") from exc
 
 
 def propose(root: Path, task_path: Path, response_path: Path) -> dict:
@@ -97,6 +176,7 @@ def propose(root: Path, task_path: Path, response_path: Path) -> dict:
     with lock(root):
         manifest = directory / "proposal.json"
         if manifest.exists():
+            load_saved_proposal(root, manifest, expected_task=task)
             return {"status": "already_proposed", "proposal": str(manifest),
                     "candidate_count": len(prepared)}
         for row in prepared:

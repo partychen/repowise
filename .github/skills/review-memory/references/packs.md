@@ -76,6 +76,8 @@ inside the task. The report retains the selected source list. Existing response
 validation still accepts only approved knowledge IDs: a source or check ID is not
 a policy ID. The reference budget is 64 KB, with omitted packs explicitly reported.
 The selector accepts limits from 1 to 20; use a narrow query instead of all packs.
+As in every current review, base/head belong to the target and `POLICY_SHA`
+belongs to the project's independent external memory Git repository.
 
 Temporal replay does not load current reference packs. Passing a reference query
 with a historical cutoff is rejected until historical reference availability can

@@ -28,7 +28,8 @@ class InstalledWorkflowTests(unittest.TestCase):
             installation.mkdir()
             target.mkdir()
             env = {**os.environ, "CI": "1", "DISABLE_TELEMETRY": "1", "DO_NOT_TRACK": "1",
-                   "REVIEW_MEMORY_CACHE": str(root / "runtime cache")}
+                   "REVIEW_MEMORY_CACHE": str(root / "runtime cache"),
+                   "REVIEW_MEMORY_HOME": str(root / "project memory")}
             result = subprocess.run(
                 [npx, "--yes", "skills", "add", str(PROJECT), "--skill", "review-memory",
                  "--agent", "github-copilot", "--copy", "--yes"],
@@ -49,6 +50,9 @@ class InstalledWorkflowTests(unittest.TestCase):
             shutil.rmtree(installation)
             runner = moved / "scripts" / "main.py"
             (target / "review_memory.py").write_text('raise RuntimeError("Untrusted target import")')
+            (target / ".gitignore").write_text("existing-ignore-pattern\n")
+            target_before = {p.relative_to(target): p.read_bytes()
+                             for p in target.rglob("*") if p.is_file()}
             env["PYTHONPATH"] = str(target)
             for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
                          "http_proxy", "https_proxy", "all_proxy"):
@@ -75,9 +79,12 @@ class InstalledWorkflowTests(unittest.TestCase):
             first = json.loads(invoke("sync", "--repository", fixture["repository"],
                                       "--fixture", str(fixture_path), "--max-prs", "1", code=2))
             self.assertEqual(first["remaining_pr_count"], 1)
+            storage = Path(first["storage_root"])
+            self.assertTrue(storage.is_relative_to(root / "project memory"))
+            self.assertFalse((target / ".review").exists())
 
             def learn(reference):
-                task_path = target / reference["path"]
+                task_path = storage / reference["path"]
                 task = json.loads(task_path.read_text(encoding="utf-8"))
                 candidate = knowledge()
                 candidate.update(maturity="candidate", sources=[],
@@ -87,11 +94,12 @@ class InstalledWorkflowTests(unittest.TestCase):
                     "model": {"provider": "host", "model": "synthetic-test", "prompt_version": "installer-smoke"},
                     "candidates": [candidate],
                 }
-                response_path = target / ".review" / "local" / "synthetic-response.json"
+                response_path = storage / ".review" / "local" / "synthetic-response.json"
                 response_path.write_text(json.dumps(response), encoding="utf-8")
-                invoke("propose", "--task", str(task_path), "--response", str(response_path))
+                result = json.loads(invoke("propose", "--task", str(task_path), "--response", str(response_path)))
+                return Path(result["proposal"]).parent / f"{candidate['id']}-r{candidate['revision']}.yaml"
 
-            learn(first["pending_tasks"][0])
+            candidate_path = learn(first["pending_tasks"][0])
             second = json.loads(invoke("sync", "--fixture", str(fixture_path), "--max-prs", "1"))
             self.assertTrue(second["collection_complete"])
             self.assertEqual(second["pending_task_count"], 1)
@@ -100,9 +108,29 @@ class InstalledWorkflowTests(unittest.TestCase):
             self.assertTrue(status["learning_complete"])
             self.assertEqual(status["knowledge_count"], 1)
             self.assertEqual(status["completed_task_count"], 2)
-            self.assertTrue((target / status["knowledge_path"]).is_file())
+            self.assertTrue((storage / status["knowledge_path"]).is_file())
+            self.assertFalse(status["next_actions"][0]["blocks_learning"])
             self.assertEqual(json.loads(invoke("sync", "--fixture", str(fixture_path)))["prs"], [])
-            self.assertFalse(list((target / ".review" / "knowledge").glob("*.yaml")))
+            queue = json.loads(invoke("approval-queue", "--limit", "1"))
+            self.assertEqual(queue["storage_root"], str(storage))
+            prepared = json.loads(invoke(
+                "prepare-approval", "--candidate", str(candidate_path),
+                "--identity", "tester@example.test", "--owner", "test-maintainer",
+                "--reason", "Synthetic unsigned installer handoff only",
+            ))
+            self.assertTrue(Path(prepared["request"]).is_file())
+            self.assertFalse(list((storage / ".review" / "knowledge").glob("*.yaml")))
+            replacement = root / "replacement skill"
+            shutil.copytree(moved, replacement, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+            shutil.rmtree(moved)
+            runner = replacement / "scripts" / "main.py"
+            resumed = json.loads(invoke("status", "--offline"))
+            self.assertEqual(resumed["storage_root"], str(storage))
+            self.assertEqual(resumed["knowledge_count"], 1)
+            self.assertEqual(resumed["completed_task_count"], 2)
+            self.assertEqual(target_before, {p.relative_to(target): p.read_bytes()
+                                            for p in target.rglob("*") if p.is_file()})
+            self.assertFalse((target / ".review").exists())
 
 
 if __name__ == "__main__":

@@ -47,6 +47,15 @@ def build_archive(project: Path, output: Path) -> dict:
         raise ValueError("Bundled dependency must be the pinned pure-Python PyYAML wheel with MIT provenance.")
     required = [skill / "SKILL.md", skill / "requirements.txt",
                 skill / "scripts" / "main.py", skill / "packs" / "__init__.py",
+                skill / "scripts" / "review_memory" / "__init__.py",
+                skill / "scripts" / "review_memory" / "cli.py",
+                skill / "scripts" / "review_memory" / "storage.py",
+                skill / "scripts" / "review_memory" / "approvals.py",
+                skill / "scripts" / "review_memory" / "repository_context.py",
+                skill / "scripts" / "review_memory" / "review_contract.py",
+                skill / "scripts" / "review_memory" / "feature.py",
+                skill / "scripts" / "review_memory" / "pull_requests.py",
+                skill / "references" / "feature.md",
                 provenance_path, skill / "wheels" / "LICENSE.PyYAML.txt",
                 skill / "wheels" / wheel["filename"]]
     paths = list(required)

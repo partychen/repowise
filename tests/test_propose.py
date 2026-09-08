@@ -45,6 +45,15 @@ class ProposalTests(unittest.TestCase):
         self.assertEqual(self.run_propose()["status"], "already_proposed")
         self.assertFalse(list((self.root / ".review" / "knowledge").glob("*")))
 
+    def test_idempotent_retry_revalidates_saved_proposal(self):
+        result = self.run_propose()
+        path = Path(result["proposal"])
+        manifest = load_json(path)
+        manifest["response_hash"] = "changed"
+        write_json(path, manifest)
+        with self.assertRaisesRegex(Error, "bindings changed"):
+            self.run_propose()
+
     def test_unknown_evidence_rejected(self):
         self.candidate["evidence_ids"] = ["E-missing"]
         with self.assertRaises(Error):
@@ -73,6 +82,14 @@ class ProposalTests(unittest.TestCase):
         self.task["evidence"][0]["pr"] = 99
         write_json(self.task_path, self.task)
         with self.assertRaises(Error):
+            self.run_propose()
+
+    def test_missing_bound_evidence_time_is_not_replaced_with_current_time(self):
+        self.task["evidence"][0].pop("available_at")
+        self.task["input_hash"] = digest(self.task["input"])
+        self.response["input_hash"] = self.task["input_hash"]
+        write_json(self.task_path, self.task)
+        with self.assertRaisesRegex(Error, "bound availability timestamp"):
             self.run_propose()
 
 

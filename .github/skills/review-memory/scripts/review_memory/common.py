@@ -88,6 +88,18 @@ def load_yaml(path: Path):
         raise Error(f"Cannot read YAML {path}: {exc}") from exc
 
 
+def is_link(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    if hasattr(path, "is_junction"):
+        return path.is_junction()
+    # Python 3.11 lacks Path.is_junction, but Windows exposes the mount-point reparse tag.
+    try:
+        return getattr(path.lstat(), "st_reparse_tag", 0) == 0xA0000003
+    except FileNotFoundError:
+        return False
+
+
 def safe_path(root: Path, relative: str | Path) -> Path:
     raw = str(relative)
     portable = PurePosixPath(raw.replace("\\", "/"))
@@ -98,7 +110,7 @@ def safe_path(root: Path, relative: str | Path) -> Path:
     cursor = root
     for part in portable.parts:
         cursor = cursor / part
-        if cursor.is_symlink() or (hasattr(cursor, "is_junction") and cursor.is_junction()):
+        if is_link(cursor):
             raise Error(f"Symlinks and junctions are not allowed: {relative}")
     if not result.resolve().is_relative_to(root):
         raise Error(f"Path outside allowed directory: {relative}")
@@ -145,9 +157,12 @@ def lock(root: Path):
 
 def git(root: Path, *args: str, binary=False):
     try:
+        # Runtime Git reads must not replace pinned objects, lazily fetch, or take optional write locks.
         result = subprocess.run(
-            ["git", "-C", str(root), "--no-pager", *args],
-            capture_output=True, timeout=60, check=False,
+            ["git", "-C", str(root), "--no-pager", "--no-replace-objects", "--no-lazy-fetch",
+             "--no-optional-locks", *args],
+            # Explicit environment blocks preserve empty Git config values on Windows.
+            capture_output=True, timeout=60, check=False, env=dict(os.environ),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise Error(f"Git unavailable or timed out: {exc}") from exc

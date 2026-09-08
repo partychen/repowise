@@ -24,7 +24,6 @@ DEFAULT_CONFIG = {
 }
 KNOWLEDGE_STATES = {"candidate", "lesson", "approved", "needs_review", "deprecated", "archived"}
 NAMESPACE = "review-memory-v1"
-LEGACY_NAMESPACE = "repo-constitution-v1"
 
 
 def _object(value, label):
@@ -56,7 +55,7 @@ def validate_config(config: dict):
         if type(config.get(field)) is not int or config[field] <= 0:
             raise Error(f"{field} must be a positive integer.")
     if config.get("publish") is not False or config.get("execute_project_commands") is not False:
-        raise Error("Publishing and project execution are not implemented; these permissions must remain false.")
+        raise Error("The bundled CLI cannot publish or execute target commands; these flags must remain false.")
     _text(config.get("model_provider"), "model_provider")
 
 
@@ -73,11 +72,11 @@ def initialize(root: Path, repository: str) -> dict:
                 raise Error("Already initialized for a different repository.")
             return {"status": "already_initialized", "repository": repository}
         for directory in ("knowledge", "detectors", "approvals", "local/raw", "local/cache",
-                          "local/proposals", "local/runs", "local/evaluation"):
+                          "local/proposals", "local/runs", "local/evaluation", "local/features"):
             safe_path(root, f".review/{directory}").mkdir(parents=True, exist_ok=True)
         config = dict(DEFAULT_CONFIG, repository=repository)
         write_yaml(config_path, config)
-        atomic_write(safe_path(root, ".review/.gitignore"), b"local/\n")
+        atomic_write(safe_path(root, ".review/.gitignore"), b"local/\nproject.json\n")
         signers = safe_path(root, ".review/allowed_signers")
         if not signers.exists():
             atomic_write(signers, b"# Maintainer-managed OpenSSH allowed_signers; no keys are trusted by default.\n")
@@ -199,7 +198,7 @@ def approval_request(root: Path, content_path: Path, kind: str, identity: str, r
             "note": "A maintainer must independently inspect and sign this exact file. The skill must not sign it."}
 
 
-def verify_signature(payload: dict, signature: str, signers: str):
+def verify_signature(payload: dict, signature: str, signers: str, *, root: Path):
     _object(payload, "approval payload")
     if payload.get("schema_version") != 1:
         raise Error("Unknown approval schema.")
@@ -211,10 +210,12 @@ def verify_signature(payload: dict, signature: str, signers: str):
     if payload.get("content_hash") != digest(payload.get("content")):
         raise Error("Approval content hash mismatch.")
     _content(payload.get("kind"), payload.get("content"))
-    namespace = payload.get("signature_namespace", LEGACY_NAMESPACE)
-    if namespace not in {NAMESPACE, LEGACY_NAMESPACE}:
+    namespace = payload.get("signature_namespace")
+    if namespace != NAMESPACE:
         raise Error("Unknown approval signature namespace.")
-    with tempfile.TemporaryDirectory(prefix="review_memory-verify-") as directory:
+    cache = safe_path(root, ".review/local/cache")
+    cache.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="review_memory-verify-", dir=cache) as directory:
         directory = Path(directory)
         signature_file, signers_file = directory / "signature", directory / "allowed_signers"
         signature_file.write_text(signature, encoding="utf-8")
@@ -240,7 +241,7 @@ def approve(root: Path, request_path: Path, signature_path: Path) -> dict:
         raise Error("Approval is for a different repository.")
     signature = signature_path.read_text(encoding="utf-8")
     signers = safe_path(root, ".review/allowed_signers").read_text(encoding="utf-8")
-    verify_signature(payload, signature, signers)
+    verify_signature(payload, signature, signers, root=root)
     if payload.get("runtime") != runtime_info():
         raise Error("Runtime changed since the approval request; create a new request for maintainer review.")
     content = payload["content"]
@@ -263,15 +264,45 @@ def approve(root: Path, request_path: Path, signature_path: Path) -> dict:
         write_json(record_path, record)
         write_yaml(target, content)
     return {"status": "approved", "id": content["id"], "revision": content["revision"],
-            "note": "Commit approved files and signer configuration to the trusted target branch before review."}
+            "note": "A maintainer must commit approved files, config, and signer authorization in the "
+                    "external memory/policy repository before review, not in the target branch."}
+
+
+def resolve_policy_commit(root: Path, trusted_ref: str) -> str:
+    root = Path(root).resolve()
+    guidance = ("A maintainer must initialize the external memory's own Git repository, commit "
+                "its inspected policy/config/signer authorization, and select a trusted policy commit.")
+    try:
+        toplevel = Path(git(root, "rev-parse", "--show-toplevel")).resolve()
+    except Error as exc:
+        raise Error(f"External memory has no policy Git history. {guidance}") from exc
+    if toplevel != root:
+        raise Error(f"External memory root must be its own Git toplevel, not an ancestor's checkout. {guidance}")
+    common_directory = Path(git(root, "rev-parse", "--git-common-dir"))
+    if not common_directory.is_absolute():
+        common_directory = root / common_directory
+    if not common_directory.resolve().is_relative_to(root):
+        raise Error(f"External memory must own its Git metadata; linked worktrees or shared external "
+                    f"Git directories are not independent policy repositories. {guidance}")
+    try:
+        return resolve_commit(root, trusted_ref)
+    except Error as exc:
+        raise Error(f"Trusted policy commit is unavailable in external memory. {guidance}") from exc
 
 
 def load_git_snapshot(root: Path, trusted_ref: str, at: str | None = None) -> dict:
-    sha = resolve_commit(root, trusted_ref)
+    root = Path(root).resolve()
+    sha = resolve_policy_commit(root, trusted_ref)
     cutoff = timestamp(at) if at else timestamp(utcnow())
-    config = parse_yaml(git(root, "show", f"{sha}:.review/config.yaml"))
+    try:
+        configuration = git(root, "show", f"{sha}:.review/config.yaml")
+        signers = git(root, "show", f"{sha}:.review/allowed_signers")
+    except Error as exc:
+        raise Error("Trusted external policy history is incomplete. A maintainer must commit "
+                    ".review/config.yaml and .review/allowed_signers in the external memory repository; "
+                    "target policy is never a fallback.") from exc
+    config = parse_yaml(configuration)
     validate_config(config)
-    signers = git(root, "show", f"{sha}:.review/allowed_signers")
     paths = git(root, "ls-tree", "-r", "--name-only", sha, "--", ".review/approvals").splitlines()
     records = []
     for path in sorted(paths):
@@ -283,7 +314,7 @@ def load_git_snapshot(root: Path, trusted_ref: str, at: str | None = None) -> di
         if not {"payload", "signature", "recorded_at"} <= record.keys() or not isinstance(record["signature"], str):
             raise Error("Malformed approval record.")
         payload = record["payload"]
-        verify_signature(payload, record["signature"], signers)
+        verify_signature(payload, record["signature"], signers, root=root)
         if payload.get("repository") != config["repository"]:
             raise Error("Cross-repository approval in trusted snapshot.")
         content = payload["content"]
@@ -322,6 +353,7 @@ def load_git_snapshot(root: Path, trusted_ref: str, at: str | None = None) -> di
             gaps.append({"knowledge_id": item["id"], "reason": "Knowledge suspended pending maintainer review."})
     manifest = {
         "schema_version": 1, "trusted_sha": sha, "repository": config["repository"],
+        "policy_source": "external_memory",
         "runtime": runtime_info(), "config": config,
         "approvals": [{"id": r["payload"]["content"]["id"], "revision": r["payload"]["content"]["revision"],
                        "hash": digest(r)} for r in sorted(latest.values(), key=lambda r: r["payload"]["content"]["id"])],

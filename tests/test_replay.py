@@ -2,15 +2,10 @@
 
 import copy
 import json
-import os
 from pathlib import Path
-import shutil
-import subprocess
 import sys
-import time
 import unittest
 from unittest.mock import patch
-import uuid
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,20 +13,18 @@ sys.path.insert(0, str(ROOT / ".github" / "skills" / "review-memory" / "scripts"
 
 from review_memory import core, replay, review
 from review_memory.common import Error, digest, load_json, runtime_info, utcnow, write_json, write_yaml
+from tests.test_core import file_tree, fixture_directory, git_command, initialize_git, knowledge
 
 
 class ReplayTests(unittest.TestCase):
     def setUp(self):
-        self.root = ROOT / (".test-replay-" + uuid.uuid4().hex)
-        self.root.mkdir()
-        self.addCleanup(self.cleanup)
-        self.command("init", "--quiet")
-        self.command("config", "user.email", "replay@example.invalid")
-        self.command("config", "user.name", "Replay fixture")
-        self.command("config", "commit.gpgsign", "false")
-        self.command("config", "core.autocrlf", "false")
-        self.command("config", "core.hooksPath", str(self.root / "no-hooks"))
-        core.initialize(self.root, "owner/repo")
+        self.directory = self.enterContext(fixture_directory())
+        self.root, self.memory = self.directory / "code", self.directory / "policy"
+        initialize_git(self.root)
+        initialize_git(self.memory)
+        core.initialize(self.memory, "owner/repo")
+        self.commit(root=self.memory)
+        self.policy = self.command("rev-parse", "HEAD", root=self.memory)
         (self.root / "source.py").write_bytes(b"before = 1\n")
         self.commit()
         self.base = self.command("rev-parse", "HEAD")
@@ -47,40 +40,23 @@ class ReplayTests(unittest.TestCase):
             },
             "events": [self.event("case-1", "2026-03-01T00:00:00Z")],
         }
-        self.dataset_path = self.root / "dataset.json"
-        self.labels_path = self.root / "independent-labels.json"
+        self.dataset_path = self.memory / ".review" / "local" / "dataset.json"
+        self.labels_path = self.memory / ".review" / "local" / "independent-labels.json"
 
-    def cleanup(self):
-        def writable(function, path, error):
-            os.chmod(path, 0o700)
-            for attempt in range(20):
-                try:
-                    function(path)
-                    return
-                except PermissionError:
-                    if attempt == 19:
-                        raise
-                    time.sleep(0.05)
-        shutil.rmtree(self.root, onerror=writable)
+    def command(self, *args, root=None, at="2025-01-01T00:00:00Z"):
+        return git_command(root or self.root, *args, at=at)
 
-    def command(self, *args):
-        env = dict(os.environ, GIT_AUTHOR_DATE="2025-01-01T00:00:00Z",
-                   GIT_COMMITTER_DATE="2025-01-01T00:00:00Z")
-        result = subprocess.run(["git", "-C", str(self.root), "--no-pager", *args],
-                                env=env, capture_output=True, check=True)
-        return result.stdout.decode("utf-8").strip()
-
-    def commit(self):
-        self.command("add", "--all")
-        self.command("commit", "--quiet", "-m", "Offline replay fixture")
+    def commit(self, root=None, at="2025-01-01T00:00:00Z"):
+        self.command("add", "--all", root=root)
+        self.command("commit", "--quiet", "-m", "Offline replay fixture", root=root, at=at)
 
     def event(self, case_id, at):
         return {"id": case_id, "type": "review", "available_at": at, "repository": "owner/repo",
-                "base": self.base, "head": self.head, "trusted_ref": self.base, "group": "D"}
+                "base": self.base, "head": self.head, "trusted_ref": self.policy, "group": "D"}
 
     def prepare(self):
         write_json(self.dataset_path, self.dataset)
-        return replay.prepare_replay(self.root, self.dataset_path)
+        return replay.prepare_replay(self.root, self.dataset_path, memory_root=self.memory)
 
     def run_directory(self, prepared, index=0):
         return Path(prepared["runs_root"]) / prepared["runs"][index]["run_id"]
@@ -96,7 +72,7 @@ class ReplayTests(unittest.TestCase):
 
     def score(self, prepared, labels):
         write_json(self.labels_path, labels)
-        return replay.score_replay(self.root, prepared["replay_id"], self.labels_path)
+        return replay.score_replay(self.memory, prepared["replay_id"], self.labels_path)
 
     def semantic_snapshot(self):
         rules = []
@@ -106,7 +82,7 @@ class ReplayTests(unittest.TestCase):
                 "applicability": {"paths": ["*.py"], "exclusions": [], "context": ""},
             })
         return {
-            "hash": "fixture-snapshot", "trusted_sha": self.base, "knowledge": rules,
+            "hash": "fixture-snapshot", "trusted_sha": self.policy, "knowledge": rules,
             "detectors": [], "manifest": {"coverage_gaps": []},
             "config": {"repository": "owner/repo", "max_rules_per_run": 50,
                        "max_findings_per_pr": 10, "model_provider": "fixture"},
@@ -116,8 +92,9 @@ class ReplayTests(unittest.TestCase):
         directory = self.run_directory(prepared)
         task = load_json(directory / "task.json")
         response = {
-            "schema_version": 1, "task_id": task["task_id"], "input_hash": task["input_hash"],
+            "schema_version": 2, "task_id": task["task_id"], "input_hash": task["input_hash"],
             "model": {"provider": "fixture", "model": "offline-fixture", "prompt_version": "v1"},
+            "repository_assessments": [],
             "assessments": [
                 {"knowledge_id": rule["id"], "revision": 1, "status": "checked",
                  "rationale": "Fixture assessment, not model benchmark evidence."}
@@ -125,7 +102,7 @@ class ReplayTests(unittest.TestCase):
             ],
             "findings": [
                 {
-                    "knowledge_id": rule["id"], "revision": 1,
+                    "knowledge_id": rule["id"], "revision": 1, "basis": "behavior", "comparisons": [],
                     "evidence": {"path": "source.py", "line_start": 1, "line_end": 1, "text": "after = 2"},
                     "applicability_rationale": "Changed assignment is within fixture scope.",
                     "counterexample_checks": ["Compared prior assignment."],
@@ -135,9 +112,9 @@ class ReplayTests(unittest.TestCase):
                 } for rule in task["knowledge"]
             ],
         }
-        response_path = self.root / "response.json"
+        response_path = self.memory / ".review" / "local" / "response.json"
         write_json(response_path, response)
-        return review.finalize_review(self.root, task["run_id"], response_path,
+        return review.finalize_review(self.memory, task["run_id"], response_path,
                                       runs_root=Path(prepared["runs_root"]))
 
     def test_real_engine_isolated_pinned_and_window_counts(self):
@@ -148,11 +125,12 @@ class ReplayTests(unittest.TestCase):
             {"id": "feedback-1", "type": "feedback", "available_at": "2026-03-02T00:00:00Z",
              "review_id": "case-1"},
         ]
-        sentinel = self.root / ".review" / "local" / "runs" / "sentinel"
+        sentinel = self.memory / ".review" / "local" / "runs" / "sentinel"
         sentinel.write_text("production-state", encoding="utf-8")
         before_head = self.command("rev-parse", "HEAD")
         self.labels_path.write_text("NOT JSON; must never be read while preparing", encoding="utf-8")
         (self.root / "source.py").write_text("dirty = 999\n", encoding="utf-8")
+        before = file_tree(self.root)
         prepared = self.prepare()
         self.assertEqual("single_arm_pipeline_pilot", prepared["mode"])
         self.assertEqual("simulation_only", prepared["reconstruction_status"])
@@ -163,10 +141,17 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(1, prepared["windows"]["train"]["event_count"])
         self.assertEqual(1, prepared["windows"]["dev"]["event_count"])
         self.assertEqual(before_head, self.command("rev-parse", "HEAD"))
+        self.assertEqual(before, file_tree(self.root))
         self.assertEqual([sentinel], list(sentinel.parent.iterdir()))
         task = load_json(self.run_directory(prepared, 2) / "task.json")
         self.assertEqual("2026-03-01T00:00:00Z", task["effective_at"])
         self.assertEqual("after = 2\n", task["code_context"][0]["after"])
+        self.assertEqual(self.base, task["base_sha"])
+        self.assertEqual(self.head, task["head_sha"])
+        self.assertEqual(self.policy, task["trusted_sha"])
+        self.assertEqual("external_memory", prepared["policy_source"])
+        self.assertEqual("external_memory", prepared["runs"][2]["policy_source"])
+        self.assertTrue(Path(prepared["manifest_path"]).is_relative_to(self.memory / ".review" / "local"))
         self.assertNotIn("feedback-1", json.dumps(task))
         self.assertEqual("production-state", sentinel.read_text(encoding="utf-8"))
         self.assertEqual(digest(self.dataset), prepared["dataset_hash"])
@@ -199,54 +184,114 @@ class ReplayTests(unittest.TestCase):
         content["events"].append({"id": "feedback", "type": "feedback", "review_id": "case-1",
                                   "available_at": "2026-03-02T00:00:00Z", "content": "future hint"})
         variants.append(content)
+        for paths in ("source.py", ["../outside"], ["C:/outside.py"], [True]):
+            invalid_context = copy.deepcopy(self.dataset)
+            invalid_context["events"][0]["context_paths"] = paths
+            variants.append(invalid_context)
         for dataset in variants:
             with self.subTest(dataset=dataset), self.assertRaises(Error):
                 replay._dataset(dataset)
-        self.assertEqual([], list((self.root / ".review" / "local" / "evaluation").iterdir()))
+        self.assertEqual([], list((self.memory / ".review" / "local" / "evaluation").iterdir()))
+
+    def test_requested_repository_context_is_frozen_into_replay(self):
+        self.dataset["events"][0]["context_paths"] = ["source.py"]
+        prepared = self.prepare()
+        task = load_json(self.run_directory(prepared) / "task.json")
+        self.assertEqual(["source.py"], task["context_selection"]["requested_paths"])
+        self.assertEqual(["source.py"], prepared["runs"][0]["context_paths"])
+        self.assertEqual(2, task["output_contract"]["schema_version"])
+        self.score(prepared, self.labels(prepared, normal=True))
+
+    def test_replay_context_selection_must_match_the_frozen_event(self):
+        self.dataset["events"][0]["context_paths"] = ["source.py"]
+        prepared = self.prepare()
+        manifest_path = Path(prepared["manifest_path"])
+        manifest = load_json(manifest_path)
+        manifest["dataset"]["events"][0]["context_paths"] = []
+        manifest["dataset_hash"] = digest(manifest["dataset"])
+        manifest["manifest_hash"] = digest({k: v for k, v in manifest.items() if k != "manifest_hash"})
+        write_json(manifest_path, manifest)
+        with self.assertRaisesRegex(Error, "repository context linkage"):
+            self.score(prepared, self.labels(prepared, normal=True))
 
     def test_future_commit_timestamp_rejected(self):
-        with patch("review_memory.replay.git", return_value="2026-03-02T00:00:00Z"):
-            with self.assertRaisesRegex(Error, "future context"):
-                self.prepare()
+        original = replay.git
+        for field, root, sha in (("base", self.root, self.base), ("head", self.root, self.head),
+                                 ("trusted_ref", self.memory, self.policy)):
+            def dated(location, *args):
+                if location == root and args == ("show", "-s", "--format=%cI", sha):
+                    return "2026-03-02T00:00:00Z"
+                return original(location, *args)
+            with self.subTest(field=field), patch("review_memory.replay.git", side_effect=dated):
+                with self.assertRaisesRegex(Error, field + " commit time.*future context"):
+                    self.prepare()
+        self.assertEqual([], list((self.memory / ".review" / "local" / "evaluation").iterdir()))
+
+    def test_commit_timestamps_come_from_their_own_repositories(self):
+        with patch("review_memory.replay.git", wraps=replay.git) as commits:
+            prepared = self.prepare()
+        commits.assert_any_call(self.root, "show", "-s", "--format=%cI", self.base)
+        commits.assert_any_call(self.root, "show", "-s", "--format=%cI", self.head)
+        commits.assert_any_call(self.memory, "show", "-s", "--format=%cI", self.policy)
+        self.assertEqual({"base", "head", "trusted_ref"}, prepared["runs"][0]["commit_times"].keys())
+
+    def test_external_policy_root_and_history_are_required(self):
+        write_json(self.dataset_path, self.dataset)
+        before = file_tree(self.root)
+        with self.assertRaisesRegex(TypeError, "memory_root"):
+            replay.prepare_replay(self.root, self.dataset_path)
+        for memory in (self.root, self.root / "policy", self.directory):
+            with self.subTest(memory=memory), self.assertRaisesRegex(Error, "non-overlapping"):
+                replay.prepare_replay(self.root, self.dataset_path, memory_root=memory)
+        inherited = self.memory / "nested"
+        inherited.mkdir()
+        with self.assertRaisesRegex(Error, "own Git toplevel"):
+            replay.prepare_replay(self.root, self.dataset_path, memory_root=inherited)
+        self.dataset["events"][0]["trusted_ref"] = self.head
+        with self.assertRaisesRegex(Error, "policy commit is unavailable"):
+            self.prepare()
+        self.assertEqual(before, file_tree(self.root))
+        self.assertEqual([], list(inherited.iterdir()))
+        self.assertEqual([], list((self.memory / ".review" / "local" / "evaluation").iterdir()))
 
     def test_future_source_and_approval_excluded_by_production_snapshot(self):
-        rule = self.semantic_snapshot()["knowledge"][0]
-        rule.update(schema_version=1, maturity="approved", title="Future rule",
-                    effective_from="2025-01-01T00:00:00Z",
-                    sources=[{"kind": "history", "reference": "fixture", "version": "1",
-                              "available_at": "2026-03-02T00:00:00Z"}])
-        payload = {"kind": "knowledge", "repository": "owner/repo", "runtime": runtime_info(),
-                   "requested_at": "2025-01-01T00:00:00Z", "content": rule}
-        record = {"payload": payload, "recorded_at": "2025-01-01T00:00:00Z", "signature": "test-only"}
-        write_yaml(self.root / ".review" / "knowledge" / "K-one-r1.yaml", rule)
-        write_json(self.root / ".review" / "approvals" / "future.json", record)
-        self.commit()
-        policy_sha = self.command("rev-parse", "HEAD")
-        (self.root / "source.py").write_bytes(b"after = 3\n")
-        self.commit()
-        self.dataset["events"][0].update(
-            trusted_ref=policy_sha, base=policy_sha, head=self.command("rev-parse", "HEAD"))
-        # Only signature verification is stubbed; the production temporal filter is exercised.
-        with patch("review_memory.core.verify_signature"):
-            prepared = self.prepare()
-        task = load_json(self.run_directory(prepared) / "task.json")
-        self.assertEqual([], task["knowledge"])
-        self.assertFalse(prepared["runs"][0]["requires_response"])
-        self.assertNotIn("Future rule", json.dumps(task))
-        rule["sources"][0]["available_at"] = "2025-01-01T00:00:00Z"
-        record["recorded_at"] = "2026-03-02T00:00:00Z"
-        write_yaml(self.root / ".review" / "knowledge" / "K-one-r1.yaml", rule)
-        write_json(self.root / ".review" / "approvals" / "future.json", record)
-        self.commit()
-        policy_sha = self.command("rev-parse", "HEAD")
-        (self.root / "source.py").write_bytes(b"after = 4\n")
-        self.commit()
-        self.dataset["events"][0].update(
-            trusted_ref=policy_sha, base=policy_sha, head=self.command("rev-parse", "HEAD"))
-        with patch("review_memory.core.verify_signature"):
-            second = self.prepare()
-        second_task = load_json(self.run_directory(second) / "task.json")
-        self.assertEqual([], second_task["knowledge"])
+        for field in ("source", "requested_at", "recorded_at", "effective_from", "valid_until"):
+            with self.subTest(field=field):
+                rule = knowledge()
+                rule.update(id="K-one", title="Unavailable rule",
+                            effective_from="2025-01-01T00:00:00Z",
+                            applicability={"paths": ["*.py"], "exclusions": [], "context": "Assignments."})
+                payload = {"kind": "knowledge", "repository": "owner/repo", "runtime": runtime_info(),
+                           "requested_at": "2025-01-01T00:00:00Z", "content": rule}
+                record = {"payload": payload, "recorded_at": "2025-01-01T00:00:00Z", "signature": "test-only"}
+                future = "2026-03-02T00:00:00Z"
+                if field == "source":
+                    rule["sources"][0]["available_at"] = future
+                elif field == "requested_at":
+                    payload["requested_at"] = future
+                elif field == "recorded_at":
+                    record["recorded_at"] = future
+                elif field == "effective_from":
+                    rule["effective_from"] = future
+                else:
+                    rule["valid_until"] = "2026-03-01T00:00:00Z"
+                write_yaml(self.memory / ".review" / "knowledge" / "K-one-r1.yaml", rule)
+                write_json(self.memory / ".review" / "approvals" / "future.json", record)
+                self.commit(root=self.memory)
+                policy_sha = self.command("rev-parse", "HEAD", root=self.memory)
+                self.dataset["events"][0]["trusted_ref"] = policy_sha
+                # Only signatures are stubbed; this tests cutoff logic, not historical provenance.
+                with patch("review_memory.core.verify_signature"):
+                    prepared = self.prepare()
+                task = load_json(self.run_directory(prepared) / "task.json")
+                self.assertEqual([], task["knowledge"])
+                self.assertFalse(prepared["runs"][0]["requires_response"])
+                self.assertNotIn("Unavailable rule", json.dumps(task))
+                self.assertEqual(self.base, task["base_sha"])
+                self.assertEqual(self.head, task["head_sha"])
+                self.assertEqual(policy_sha, task["trusted_sha"])
+                if field == "valid_until":
+                    self.assertTrue(any("expired" in gap for gap in task["coverage_gaps"]))
 
     def test_empty_reports_unknown_precision_and_cost(self):
         prepared = self.prepare()
@@ -264,6 +309,7 @@ class ReplayTests(unittest.TestCase):
         self.assertTrue(Path(score["score_path"]).exists())
 
     def test_finished_findings_explicit_tp_unique_issue_recall(self):
+        before = file_tree(self.root)
         with patch("review_memory.core.load_git_snapshot", return_value=self.semantic_snapshot()):
             prepared = self.prepare()
         report = self.finish_semantic(prepared)
@@ -285,6 +331,8 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(0.5, metrics["recall"])
         self.assertEqual(1, metrics["coverage_incomplete_cases"])
         self.assertEqual(0, score["by_split"]["train"]["case_count"])
+        self.assertEqual("external_memory", score["policy_source"])
+        self.assertEqual(before, file_tree(self.root))
 
     def test_valid_without_explicit_tp_and_unjudged_controls(self):
         with patch("review_memory.core.load_git_snapshot", return_value=self.semantic_snapshot()):
@@ -386,6 +434,20 @@ class ReplayTests(unittest.TestCase):
         completion["completion_hash"] = "tampered"
         write_json(path, completion)
         with self.assertRaisesRegex(Error, "completion hash"):
+            self.score(prepared, self.labels(prepared))
+
+    def test_code_commit_cannot_replace_finished_policy_provenance(self):
+        prepared = self.prepare()
+        directory = self.run_directory(prepared)
+        report = load_json(directory / "report.json")
+        report["trusted_sha"] = self.head
+        completion = load_json(directory / "completion.json")
+        completion["report"] = report
+        completion["completion_hash"] = digest({key: value for key, value in completion.items()
+                                                if key != "completion_hash"})
+        write_json(directory / "report.json", report)
+        write_json(directory / "completion.json", completion)
+        with self.assertRaisesRegex(Error, "mismatched trusted_sha"):
             self.score(prepared, self.labels(prepared))
 
 

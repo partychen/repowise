@@ -42,7 +42,6 @@ from .common import Error, digest, load_json, lock, safe_path, utcnow, write_jso
 
 
 FIXTURE_SCHEMA = "review-memory.collection-fixture.v1"
-LEGACY_FIXTURE_SCHEMA = "repo-constitution.collection-fixture.v1"
 EVIDENCE_SCHEMA = "review-memory.evidence.v0.2"
 TASK_SCHEMA = "review-memory.learning-task.v0.2"
 API_VERSION = "2022-11-28"
@@ -67,6 +66,9 @@ _MODEL_RESULT_CONTRACT = {
         "Every candidate must cite task evidence_ids and have maturity candidate or lesson, never approved.",
         "Missing or ambiguous code versions must remain unavailable.",
         "Resolved threads, approval, Fixed claims, or mechanical pairs do not prove implementation.",
+        "Compare the evidence against saved repository knowledge before inventing a new rule.",
+        "Distinguish adding evidence, narrowing applicability, introducing an exception, and retiring or suspending prior knowledge revisions.",
+        "A PR may confirm existing knowledge or produce no durable lesson; an empty candidate list is valid.",
     ],
 }
 
@@ -113,6 +115,118 @@ def _relative(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
+def learning_index_relative(offline: bool) -> str:
+    return f".review/local/learning/{'fixture-' if offline else ''}index.json"
+
+
+def _evidence_identity(bundle: dict) -> dict:
+    return {
+        "repository": bundle.get("repository"),
+        "pr": bundle.get("pr"),
+        "offline": bundle.get("offline"),
+        "kind": bundle.get("kind"),
+        "root_comment_id": bundle.get("root_comment_id"),
+        "object_id": bundle.get("object_id"),
+        "comment_version": bundle.get("comment_version"),
+        "observations": bundle.get("observations"),
+        "before": bundle.get("before"),
+        "after": bundle.get("after"),
+        "response_outcome": bundle.get("response_outcome"),
+    }
+
+
+def _load_evidence_bundle(root: Path, reference: dict, *, repository: str, pr: int,
+                          offline: bool) -> dict:
+    if (not isinstance(reference, dict) or not isinstance(reference.get("path"), str)
+            or not isinstance(reference.get("evidence_id"), str)
+            or not isinstance(reference.get("content_hash"), str)
+            or not isinstance(reference.get("available_at"), str)
+            or type(reference.get("offline")) is not bool):
+        raise Error("Learning task evidence references require explicit path, identity, hash, timestamp, and offline mode.")
+    if (reference.get("repository") != repository or reference.get("pr") != pr
+            or reference["offline"] is not offline):
+        raise Error("Learning task evidence identity does not match its repository, PR, or offline mode.")
+    path = safe_path(root, reference["path"])
+    if path.parent != safe_path(root, ".review/local/raw/evidence"):
+        raise Error("Learning task evidence must stay in the local raw evidence directory.")
+    bundle = load_json(path)
+    if not isinstance(bundle, dict) or bundle.get("schema_version") != EVIDENCE_SCHEMA:
+        raise Error("Learning task evidence bundle has an invalid schema.")
+    if type(bundle.get("offline")) is not bool:
+        raise Error("Evidence bundle offline mode must be explicit true or false.")
+    if (bundle["offline"] is not offline or bundle.get("repository") != repository
+            or bundle.get("pr") != pr):
+        raise Error("Evidence bundle repository, PR, or offline mode changed after collection.")
+    if bundle.get("evidence_id") != reference["evidence_id"]:
+        raise Error("Evidence bundle ID does not match its task reference.")
+    if reference.get("content_hash") != digest(bundle):
+        raise Error("Evidence content changed after the task was prepared.")
+    if reference["evidence_id"] != "ev-" + digest(_evidence_identity(bundle)):
+        raise Error("Evidence bundle identity does not match its evidence_id.")
+    timestamps = bundle.get("timestamps")
+    if not isinstance(timestamps, dict) or timestamps.get("observed_at") != reference["available_at"]:
+        raise Error("Evidence availability timestamp changed after the task was prepared.")
+    _date(reference["available_at"], "evidence available_at")
+    return bundle
+
+
+def load_learning_task(root: Path, task_path: Path, *, repository: str,
+                       offline: bool | None = None) -> dict:
+    root = root.resolve()
+    try:
+        relative = task_path.relative_to(root) if task_path.is_absolute() else task_path
+    except ValueError as exc:
+        raise Error("Learning task must belong to this storage root.") from exc
+    task_path = safe_path(root, relative)
+    tasks = safe_path(root, ".review/local/proposals/tasks")
+    if task_path.parent != tasks or task_path.suffix != ".json":
+        raise Error("Expected a saved induction task in the local task directory.")
+    task = load_json(task_path)
+    if not isinstance(task, dict) or task.get("schema_version") != TASK_SCHEMA:
+        raise Error("Invalid saved induction task.")
+    if task.get("task_type") != "induce":
+        raise Error("Saved learning task must use task_type induce.")
+    if task.get("repository") != repository:
+        raise Error("Saved learning task repository does not match the initialized repository.")
+    task_id = task.get("task_id")
+    input_hash = task.get("input_hash")
+    if (not isinstance(task_id, str) or not task_id.startswith("induce-")
+            or not isinstance(input_hash, str) or not input_hash):
+        raise Error("Saved learning task identity is invalid.")
+    if task_id != "induce-" + input_hash or task_path.name != f"{task_id}.json":
+        raise Error("Saved learning task filename or task_id does not match its input hash.")
+    if type(task.get("pr")) is not int or task["pr"] < 1:
+        raise Error("Saved learning task PR must be a positive integer.")
+    task_offline = task.get("offline")
+    if type(task_offline) is not bool:
+        raise Error("Saved learning task offline mode must be explicit true or false.")
+    if offline is not None and task_offline is not offline:
+        raise Error("Saved learning task offline mode does not match the selected inbox.")
+    input_data = task.get("input")
+    evidence = task.get("evidence")
+    if not isinstance(input_data, dict) or not isinstance(evidence, list):
+        raise Error("Saved learning task input and evidence must be present.")
+    if input_data.get("repository") != repository or input_data.get("pr") != task["pr"]:
+        raise Error("Saved learning task input identity changed after collection.")
+    if type(input_data.get("offline")) is not bool or input_data["offline"] is not task_offline:
+        raise Error("Saved learning task offline mode differs from its hashed input.")
+    if input_data.get("evidence") != evidence or digest(input_data) != input_hash:
+        raise Error("Saved learning task input hash or evidence binding is invalid.")
+    contract = task.get("model_result_contract")
+    if (not isinstance(contract, dict) or contract.get("task_id") != task_id
+            or contract.get("input_hash") != input_hash):
+        raise Error("Saved learning task response contract is not bound to its identity.")
+    seen = set()
+    for reference in evidence:
+        bundle = _load_evidence_bundle(root, reference, repository=repository,
+                                       pr=task["pr"], offline=task_offline)
+        evidence_id = bundle["evidence_id"]
+        if evidence_id in seen:
+            raise Error("Saved learning task evidence IDs must be unique.")
+        seen.add(evidence_id)
+    return task
+
+
 class _Store:
     def __init__(self, root: Path, repository: str):
         self.root = root
@@ -148,6 +262,8 @@ class _Store:
 
 
 class _GitHub:
+    offline = False
+
     def __init__(self, repository: str, store: _Store):
         self.repository = repository
         self.store = store
@@ -250,12 +366,14 @@ class _GitHub:
 
 
 class _Fixture:
+    offline = True
+
     def __init__(self, path: Path, repository: str, store: _Store):
         try:
             data = load_json(path)
         except (OSError, ValueError) as exc:
             raise Error("cannot read collection fixture JSON") from exc
-        if not isinstance(data, dict) or data.get("schema_version") not in {FIXTURE_SCHEMA, LEGACY_FIXTURE_SCHEMA}:
+        if not isinstance(data, dict) or data.get("schema_version") != FIXTURE_SCHEMA:
             raise Error(f"fixture schema_version must be {FIXTURE_SCHEMA}")
         if _repository(data.get("repository")) != repository:
             raise Error("fixture repository does not match requested repository")
@@ -471,8 +589,8 @@ def _collect_pr(store: _Store, adapter: Any, number: int) -> dict:
             "basis": "textual claim only" if claimed else "not established",
             "mechanical_pairing_is_not_implementation": True,
         }
-        identity = {"repository": store.repository, "pr": number, "kind": kind,
-                    "root_comment_id": root_id if kind == "review_thread" else None,
+        identity = {"repository": store.repository, "pr": number, "offline": adapter.offline,
+                    "kind": kind, "root_comment_id": root_id if kind == "review_thread" else None,
                     "object_id": root_id, "comment_version": comment_version,
                     "observations": observations, "before": before, "after": after,
                     "response_outcome": outcome}
@@ -509,13 +627,23 @@ def _collect_pr(store: _Store, adapter: Any, number: int) -> dict:
         evidence.append({"evidence_id": evidence_id, "path": path,
                          "comment_version": stored["comment_version"],
                          "content_hash": digest(stored), "available_at": available_at,
-                         "repository": store.repository, "pr": number})
-    input_data = {"repository": store.repository, "pr": number,
+                         "repository": store.repository, "pr": number, "offline": adapter.offline})
+    input_data = {"repository": store.repository, "pr": number, "offline": adapter.offline,
                   "pr_version": digest(meta), "evidence": evidence,
                   "object_versions": {
                       "reviews": [digest(x) for x in reviews],
                       "comments": [digest(x) for x in comments],
                       "issue_comments": [digest(x) for x in issue_comments]},
+                  "knowledge_comparison": {
+                      "knowledge_path": learning_index_relative(adapter.offline),
+                      "required_distinctions": [
+                          "additional corroborating evidence only",
+                          "narrowed applicability or scope",
+                          "new exception or counterexample",
+                          "retirement, suspension, or deprecation of prior knowledge",
+                          "no durable knowledge change",
+                      ],
+                  },
                   "response_contract": _MODEL_RESULT_CONTRACT,
                   "gaps": sorted(set(gaps))}
     input_hash = digest(input_data)
@@ -523,6 +651,7 @@ def _collect_pr(store: _Store, adapter: Any, number: int) -> dict:
     task = {
         "schema_version": TASK_SCHEMA, "task_id": task_id, "task_type": "induce",
         "input_hash": input_hash, "repository": store.repository, "pr": number,
+        "offline": adapter.offline,
         "created_at": utcnow(), "evidence": evidence, "gaps": sorted(set(gaps)),
         "input": input_data,
         "model_result_contract": {

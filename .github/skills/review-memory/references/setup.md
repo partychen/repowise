@@ -6,8 +6,11 @@ Use Python 3.11+ with the standard `venv` and `ensurepip` modules. Every `python
 example means this verified interpreter; if the shell alias points to an older
 version, use the supported executable explicitly for both setup and later commands.
 Live collection requires the operator's authenticated `gh`.
-Git and recent OpenSSH with SSH signature support are needed for policy approval
-and Git-based review, not for initial fixture learning.
+Git with `--no-lazy-fetch` support and recent OpenSSH with SSH signature support
+are needed for policy approval and Git-based review, not for initial fixture learning.
+Runtime Git reads disable replacement objects, lazy fetching and optional write
+locks. Unsupported Git safety options are errors or coverage gaps, not permission
+to retry with network access or mutable replacement objects.
 Use existing credentials; never place credentials in tasks, fixtures or source files.
 
 Install the Skill with the standard skills CLI (this is the publishing repository,
@@ -54,13 +57,13 @@ in PR content.
 - **Missing or altered wheel:** reinstall the complete Skill from a trusted
   source. Do not substitute a download, change the pinned hash, add a mirror,
   or disable TLS/certificate verification to force setup through.
-- **An older setup tries to reach PyPI:** confirm the actual installed Skill
-  location and update that installation. The offline bundle uses a new cache key;
-  it does not reuse an older failed download environment.
+- **Setup tries to reach PyPI:** confirm the actual installed Skill location and
+  the complete bundled wheel/requirements. The supported setup is offline;
+  do not add a download fallback or relax network security.
 - **Interrupted environment or stale lock:** inspect the exact path reported by
   the launcher and confirm no process is using it. Only then remove that specific
   incomplete runtime directory or stale lock and rerun setup. Never delete the
-  entire cache or the target's `.review` data as a setup repair.
+  entire cache or the external project's memory as a setup repair.
 - **Missing `venv`/`ensurepip`:** use a supported full Python distribution.
   Setup cannot replace missing Python components with network downloads.
 
@@ -75,7 +78,9 @@ may use `.agents/skills` or links depending on host/version; do not hardcode a
 discovery path. Manual installation at a host-supported Skill location also works.
 See [Copilot skills locations](https://docs.github.com/en/copilot/concepts/agents/about-agent-skills).
 
-Start [project sync](sync.md) after setup; it auto-initializes the target.
+Start [project sync](sync.md) after setup; it initializes external project memory,
+not the target checkout. Use a personal (`-g`) Skill installation so installing
+the Skill itself does not add project-local Skill files either.
 An editable installation is only for developers, not the Skill execution path.
 Do not copy cached virtual environments between machines; recreate them with setup.
 Approved records bind the runtime version and hash. Changing the trusted implementation
@@ -83,11 +88,28 @@ requires review and new approval, not silently accepting a hash mismatch.
 The binding also pins Python and PyYAML versions; environment upgrades require
 re-approval even if the tool's source files are unchanged.
 
-## Target layout
+## External project layout
+
+`--root` selects target code that the CLI only reads. Separately authorized host
+feature tools may edit that workspace. `doctor`, `sync`, `status` and other
+project commands return `storage_root`, `local_path`, `data_home` and `project_id`.
+The default is `~\.review-memory\projects\<name>-<path-hash>`, with `.review`
+under that external storage root. The normalized target path determines its
+identity; a separate binding checks the selected GitHub repository.
+Do not guess a directory from the repository name or Skill installation path.
+
+To choose another absolute external parent directory, put `--data-home PATH`
+before the command, or configure `REVIEW_MEMORY_HOME` in the host environment.
+It must not be inside the target or the installed Skill/source. No command
+creates target `.review`, modifies target ignores, or imports old target state.
+This pre-release has no migration or in-repository storage mode.
+
+All paths below are relative to the returned `storage_root`:
 
 | Path | Purpose |
 | --- | --- |
 | `.review/config.yaml` | Repository identity, limits and fixed permissions |
+| `.review/project.json` | Local target-path binding, excluded from policy Git history |
 | `.review/allowed_signers` | Maintainer-managed signer authorization |
 | `.review/knowledge/` | Signed knowledge revisions |
 | `.review/detectors/` | Independently approved detector configurations |
@@ -99,25 +121,30 @@ re-approval even if the tool's source files are unchanged.
 | `.review/local/learning/index.json` | Accumulated unapproved lessons and evidence links |
 | `.review/local/runs/` | Pinned review artifacts |
 | `.review/local/evaluation/` | Replay and evaluation artifacts |
+| `.review/local/features/` | Feature context and host-reported implementation/check records |
 
-Initialization ignores `.review/local/` in Git. It does not create signer keys
-or grant trust. The target's policy files and signed approvals must reach a
-maintainer-selected trusted Git commit before policy review can proceed.
-An empty snapshot is not a substitute for approved knowledge.
+Initialization creates ignore rules only in this external `.review` directory.
+It does not create signer keys, grant trust, initialize Git or commit anything.
+Learning requires no policy Git history. For formal review, a maintainer must
+initialize the external storage root as its own Git repository, configure signer
+trust, and commit inspected policy and signed records there. See [approval](approval.md).
 
-Do not select the PR head as the trust anchor merely because it contains a
-`.review` directory. The maintainer must choose the approved target-branch
-commit independently; use the full SHA in reproducible runs.
-That policy commit must be an ancestor of or equal to the review base. The
-engine rejects unrelated or later policy commits, including PR-head policy that
-is not in the base's ancestry. Ancestry is an additional fence, not a substitute
-for independent maintainer trust selection.
+The external repository must own its Git metadata beneath the storage root.
+A linked worktree or shared Git directory is not an independent policy store.
+
+`--trusted-ref` identifies a commit in that external repository, not in the target.
+It has no ancestry relationship to the target's base/head. Root separation,
+repository identity, signatures and runtime bindings establish the policy boundary.
+An ancestor Git repository is not an implicit policy source. No PR-head `.review`
+file can supply signer authority. Use full commit SHAs in reproducible runs.
 
 ## Operational checks
 
 - Confirm that `--root` names the target, not the tool checkout.
+- Resolve emitted artifact paths against `storage_root`, not `--root`.
 - Confirm repository identity matches the intended `owner/repo`.
-- Verify base, head and policy commits are already available locally.
+- Verify base/head exist in the target and the policy commit exists in the
+  external memory's own Git repository.
 - If network Git operations are needed, use the operator's approved Git workflow;
   this Skill does not grant permission to fetch or install arbitrary content.
 - Diagnose an approval/runtime mismatch rather than weakening verification.

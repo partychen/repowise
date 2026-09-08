@@ -40,6 +40,13 @@ class PortabilityTests(unittest.TestCase):
                 self.assertEqual(archive.read("review-memory/requirements.txt"),
                                  (moved / ".github" / "skills" / "review-memory" / "requirements.txt").read_bytes())
                 self.assertIn("review-memory/references/setup.md", names)
+                self.assertIn("review-memory/scripts/review_memory/storage.py", names)
+                self.assertIn("review-memory/scripts/review_memory/approvals.py", names)
+                self.assertIn("review-memory/scripts/review_memory/repository_context.py", names)
+                self.assertIn("review-memory/scripts/review_memory/review_contract.py", names)
+                self.assertIn("review-memory/scripts/review_memory/feature.py", names)
+                self.assertIn("review-memory/scripts/review_memory/pull_requests.py", names)
+                self.assertIn("review-memory/references/feature.md", names)
                 self.assertIn("review-memory/packs/sources/actionbook-rust-skills.json", names)
                 self.assertIn("review-memory/wheels/LICENSE.PyYAML.txt", names)
                 provenance = json.loads(archive.read("review-memory/wheels/provenance.json"))

@@ -1,12 +1,8 @@
 import copy
 import json
-import os
 import shutil
-import subprocess
 import sys
-import time
 import unittest
-import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,9 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".github" / "skills
                        "review-memory" / "scripts"))
 
 from review_memory.common import Error, digest, load_json, write_json
+from review_memory.core import initialize, load_git_snapshot
 from review_memory.detectors import TOOL_ID
 from review_memory.render import publish, render_html
 from review_memory.review import _added_lines, _source_lines, finalize_review, prepare_review
+from tests.test_core import file_tree, fixture_directory, git_command, initialize_git
 
 
 def rule(mode="llm", identifier="K-review"):
@@ -28,15 +26,14 @@ def rule(mode="llm", identifier="K-review"):
 
 class ReviewTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path.cwd() / (".test-review-" + uuid.uuid4().hex)
-        self.root.mkdir()
-        self.addCleanup(self.cleanup)
-        self.command("init", "--quiet")
-        self.command("config", "user.email", "tests@example.invalid")
-        self.command("config", "user.name", "Review tests")
-        self.command("config", "core.autocrlf", "false")
-        self.command("config", "commit.gpgsign", "false")
-        self.command("config", "core.hooksPath", str(self.root / ".no-hooks"))
+        self.directory = self.enterContext(fixture_directory())
+        self.root, self.memory = self.directory / "code", self.directory / "policy"
+        initialize_git(self.root)
+        initialize_git(self.memory)
+        initialize(self.memory, "owner/repo")
+        git_command(self.memory, "add", ".review")
+        git_command(self.memory, "commit", "-qm", "Independent synthetic policy store")
+        self.policy = git_command(self.memory, "rev-parse", "HEAD")
         self.write("source file.py", "old = 1\nunchanged = 2\n")
         self.write("Cargo.toml", '[package]\nname = "boundary"\nversion = "0.1.0"\n')
         self.commit()
@@ -44,7 +41,7 @@ class ReviewTests(unittest.TestCase):
         self.write("source file.py", "new = 1\nunchanged = 2\n")
         self.commit()
         self.head = self.command("rev-parse", "HEAD")
-        self.snapshot = {"hash": "snapshot-hash", "trusted_sha": self.base, "knowledge": [rule()],
+        self.snapshot = {"hash": "snapshot-hash", "trusted_sha": self.policy, "knowledge": [rule()],
                          "detectors": [], "manifest": {"coverage_gaps": []},
                          "config": {"repository": "owner/repo", "max_rules_per_run": 50,
                                     "max_findings_per_pr": 10}}
@@ -52,22 +49,8 @@ class ReviewTests(unittest.TestCase):
         self.load = self.loader.start()
         self.addCleanup(self.loader.stop)
 
-    def cleanup(self):
-        def writable(function, path, error):
-            os.chmod(path, 0o700)
-            for attempt in range(20):
-                try:
-                    function(path)
-                    return
-                except PermissionError:
-                    if attempt == 19:
-                        raise
-                    time.sleep(0.05)
-        shutil.rmtree(self.root, onerror=writable)
-
     def command(self, *args):
-        result = subprocess.run(["git", "-C", str(self.root), *args], capture_output=True, check=True)
-        return result.stdout.decode("utf-8").strip()
+        return git_command(self.root, *args)
 
     def write(self, path, text):
         destination = self.root / path
@@ -79,16 +62,18 @@ class ReviewTests(unittest.TestCase):
         self.command("commit", "--quiet", "-m", "Fixture change")
 
     def prepare(self, **kwargs):
-        return prepare_review(self.root, "owner/repo", self.base, self.head, self.base, **kwargs)
+        return prepare_review(self.root, "owner/repo", self.base, self.head, self.policy,
+                              memory_root=self.memory, **kwargs)
 
     def response(self, prepared, findings=True):
         task = prepared["task"]
-        return {"schema_version": 1, "task_id": task["task_id"], "input_hash": task["input_hash"],
+        return {"schema_version": 2, "task_id": task["task_id"], "input_hash": task["input_hash"],
                 "model": {"provider": "unknown", "model": "offline-fixture", "prompt_version": "v1"},
+                "repository_assessments": [],
                 "assessments": [{"knowledge_id": "K-review", "revision": 1, "status": "checked",
                                  "rationale": "Inspected supplied source and counterexamples."}],
                 "findings": [{
-                    "knowledge_id": "K-review", "revision": 1,
+                    "knowledge_id": "K-review", "revision": 1, "basis": "behavior", "comparisons": [],
                     "evidence": {"path": "source file.py", "line_start": 1, "line_end": 1, "text": "new = 1"},
                     "applicability_rationale": "The changed source is in the approved scope.",
                     "counterexample_checks": ["Compared the previous assignment."], "impact": "Example impact",
@@ -96,31 +81,53 @@ class ReviewTests(unittest.TestCase):
                     "uncertainty": "No execution performed", "verification": "inspected"}] if findings else []}
 
     def finalize(self, prepared, response):
-        path = self.root / "response.json"
+        path = self.memory / ".review" / "local" / "response.json"
         write_json(path, response)
-        return finalize_review(self.root, prepared["run_id"], path)
+        return finalize_review(self.memory, prepared["run_id"], path)
 
     def test_pinned_source_and_input_identity(self):
         self.write("source file.py", "uncommitted malicious = 99\n")
         before_head = self.command("rev-parse", "HEAD")
+        before = file_tree(self.root)
         prepared = self.prepare(at="2025-01-01T00:00:00Z")
-        self.load.assert_called_once_with(self.root, self.base, at="2025-01-01T00:00:00Z")
+        self.load.assert_called_once_with(self.memory, self.policy, at="2025-01-01T00:00:00Z")
         task = prepared["task"]
         self.assertEqual(self.head, task["head_sha"])
+        self.assertEqual(self.policy, task["trusted_sha"])
+        self.assertEqual("target_repository", task["code_source"])
+        self.assertEqual("external_memory", task["policy_source"])
+        self.assertEqual(".review/local/runs", task["runs_path"])
         self.assertEqual(before_head, self.command("rev-parse", "HEAD"))
+        self.assertEqual(before, file_tree(self.root))
         context = next(c for c in task["code_context"] if c["path"] == "source file.py")
         self.assertEqual("new = 1\nunchanged = 2\n", context["after"])
         self.assertEqual([1], context["changed_lines"])
         self.assertEqual(task["input_hash"], digest({k: v for k, v in task.items() if k != "input_hash"}))
         self.assertIn("uncommitted", (self.root / "source file.py").read_text())
 
+    def test_every_git_read_in_preparation_disables_mutable_object_behavior(self):
+        from review_memory import common
+        with patch("review_memory.common.subprocess.run", wraps=common.subprocess.run) as calls:
+            self.prepare()
+        commands = [call.args[0] for call in calls.call_args_list if call.args[0][0] == "git"]
+        self.assertTrue(any("rev-parse" in command for command in commands))
+        self.assertTrue(any("diff" in command for command in commands))
+        self.assertTrue(any("cat-file" in command for command in commands))
+        for command in commands:
+            for option in ("--no-replace-objects", "--no-lazy-fetch", "--no-optional-locks"):
+                with self.subTest(command=command, option=option):
+                    self.assertEqual(1, command.count(option))
+
     def test_finalize_exact_evidence_and_immutable_completion(self):
+        before = file_tree(self.root)
         prepared = self.prepare()
         response = self.response(prepared)
         report = self.finalize(prepared, response)
         self.assertEqual(1, report["total_findings"])
         self.assertEqual(1, report["findings"][0]["inline_line"])
         self.assertFalse(report["cache_reuse"])
+        self.assertEqual("external_memory", report["policy_source"])
+        self.assertEqual(self.policy, report["trusted_sha"])
         self.assertIsNone(report["costs"]["amount"])
         self.assertEqual(report, self.finalize(prepared, response))
         response["findings"][0]["suggestion"] = "Different response"
@@ -128,7 +135,9 @@ class ReviewTests(unittest.TestCase):
             self.finalize(prepared, response)
         directory = Path(prepared["task_path"]).parent
         self.assertTrue((directory / "report.html").exists())
+        self.assertTrue(directory.is_relative_to(self.memory / ".review" / "local"))
         self.assertEqual(report, load_json(directory / "report.json"))
+        self.assertEqual(before, file_tree(self.root))
 
     def test_bad_evidence_stale_unknown_and_execution_claims_rejected(self):
         prepared = self.prepare()
@@ -167,6 +176,68 @@ class ReviewTests(unittest.TestCase):
         report = self.finalize(prepared, response)
         self.assertEqual("incomplete", report["status"])
         self.assertTrue(any("Missing semantic assessment" in gap for gap in report["coverage_gaps"]))
+
+    def test_repository_first_contract_and_missing_dimensions_are_visible(self):
+        from review_memory.review_contract import REPOSITORY_DIMENSIONS
+        prepared = self.prepare()
+        task = prepared["task"]
+        self.assertEqual(2, task["schema_version"])
+        self.assertEqual(2, task["output_contract"]["schema_version"])
+        self.assertEqual(REPOSITORY_DIMENSIONS, task["repository_review"]["dimensions"])
+        self.assertIn("HEAD-only examples cannot establish pre-existing convention",
+                      task["output_contract"]["instructions"])
+        self.assertIn("context_selection", task)
+        report = self.finalize(prepared, self.response(prepared, findings=False))
+        self.assertEqual([], report["repository_assessments"])
+        for dimension in REPOSITORY_DIMENSIONS:
+            self.assertIn(f"Missing repository assessment: {dimension}", report["coverage_gaps"])
+        self.assertFalse(report["awaiting_response"])
+        self.assertEqual("incomplete", report["status"])
+
+    def test_returned_task_cannot_mutate_the_next_review_contract(self):
+        prepared = self.prepare()
+        prepared["task"]["output_contract"]["instructions"] = "Untrusted replacement."
+        prepared["task"]["repository_review"]["dimensions"]["architecture"] = "Skip it."
+        next_task = self.prepare()["task"]
+        self.assertNotEqual("Untrusted replacement.", next_task["output_contract"]["instructions"])
+        self.assertNotEqual("Skip it.", next_task["repository_review"]["dimensions"]["architecture"])
+
+    def test_consistency_evidence_is_verified_and_rendered_from_base(self):
+        prepared = self.prepare()
+        response = self.response(prepared)
+        reference = {"snapshot": "base", "commit": self.base, "path": "source file.py",
+                     "line_start": 1, "line_end": 1, "text": "old = 1"}
+        response["findings"][0].update(basis="consistency", comparisons=[reference])
+        response["repository_assessments"] = [
+            {"dimension": "idioms", "status": "checked", "references": [reference],
+             "rationale": "Synthetic comparison fixture, not a real judgment of style."}
+        ]
+        report = self.finalize(prepared, response)
+        self.assertEqual([reference], report["findings"][0]["comparisons"])
+        self.assertEqual(response["repository_assessments"], report["repository_assessments"])
+        rendered = (Path(prepared["task_path"]).parent / "report.md").read_text(encoding="utf-8")
+        self.assertIn("Existing project comparisons", rendered)
+        self.assertIn("BASE " + self.base, rendered)
+        self.assertIn("idioms: checked", rendered)
+
+    def test_head_only_example_cannot_justify_existing_convention(self):
+        self.write("new_example.py", "new_pattern = 7\n")
+        self.commit()
+        self.head = self.command("rev-parse", "HEAD")
+        prepared = self.prepare()
+        response = self.response(prepared)
+        finding = response["findings"][0]
+        finding["basis"] = "consistency"
+        reference = {"snapshot": "head", "commit": self.head, "path": "new_example.py",
+                     "line_start": 1, "line_end": 1, "text": "new_pattern = 7"}
+        finding["comparisons"] = [reference]
+        with self.assertRaisesRegex(Error, "BASE evidence"):
+            self.finalize(prepared, response)
+        reference.update(snapshot="base", commit=self.base)
+        with self.assertRaisesRegex(Error, "available frozen source"):
+            self.finalize(prepared, response)
+        finding.update(basis="behavior", comparisons=[])
+        self.assertEqual(1, self.finalize(prepared, response)["total_findings"])
 
     def test_model_provider_must_match_trusted_configuration(self):
         self.snapshot["config"]["model_provider"] = "host"
@@ -232,24 +303,36 @@ class ReviewTests(unittest.TestCase):
             self.finalize(prepared, self.response(prepared))
 
     def test_run_traversal_is_rejected(self):
-        path = self.root / "response.json"
+        path = self.memory / ".review" / "local" / "response.json"
         write_json(path, {})
         with self.assertRaisesRegex(Error, "run id"):
-            finalize_review(self.root, "../../outside", path)
+            finalize_review(self.memory, "../../outside", path)
 
     def test_evaluation_runs_are_isolated_and_paths_confined(self):
-        runs_root = self.root / ".review" / "local" / "evaluation" / "fixture" / "runs"
+        before = file_tree(self.root)
+        runs_root = self.memory / ".review" / "local" / "evaluation" / "fixture" / "runs"
         prepared = self.prepare(runs_root=runs_root)
         self.assertEqual(runs_root / prepared["run_id"] / "task.json", Path(prepared["task_path"]))
-        self.assertFalse((self.root / ".review" / "local" / "runs").exists())
-        path = self.root / "response.json"
+        self.assertEqual([], list((self.memory / ".review" / "local" / "runs").iterdir()))
+        path = self.memory / ".review" / "local" / "response.json"
         write_json(path, self.response(prepared))
-        result = finalize_review(self.root, prepared["run_id"], path, runs_root=runs_root)
+        result = finalize_review(self.memory, prepared["run_id"], path, runs_root=runs_root)
         self.assertEqual(1, result["total_findings"])
         with self.assertRaises(Error):
             self.prepare(runs_root=self.root.parent / "outside")
         with self.assertRaises(Error):
             self.prepare(runs_root=Path(".review") / "local" / "evaluation" / ".." / ".." / "runs")
+        with self.assertRaisesRegex(Error, "external memory"):
+            self.prepare(runs_root=self.root / ".review" / "local" / "runs")
+        self.assertEqual(before, file_tree(self.root))
+
+    def test_copied_evaluation_task_cannot_be_finalized_as_production(self):
+        runs_root = self.memory / ".review" / "local" / "evaluation" / "fixture" / "runs"
+        prepared = self.prepare(runs_root=runs_root)
+        shutil.copytree(runs_root / prepared["run_id"],
+                        self.memory / ".review" / "local" / "runs" / prepared["run_id"])
+        with self.assertRaisesRegex(Error, "isolated runs directory"):
+            self.finalize(prepared, self.response(prepared))
 
     def test_limits_and_manual_rules_are_disclosed(self):
         self.snapshot["knowledge"] = [rule("manual"), rule(identifier="K-overflow")]
@@ -359,16 +442,30 @@ class ReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(Error, "unsupported"):
             self.prepare()
 
-    def test_trusted_policy_must_be_ancestor_of_base(self):
-        self.snapshot["trusted_sha"] = self.head
-        with self.assertRaisesRegex(Error, "ancestor"):
-            self.prepare()
-        tree = self.command("rev-parse", self.base + "^{tree}")
-        self.snapshot["trusted_sha"] = self.command("commit-tree", tree, "-m", "Unrelated policy")
-        with self.assertRaisesRegex(Error, "ancestor"):
-            self.prepare()
-        self.snapshot["trusted_sha"] = self.base
-        self.assertEqual(self.base, self.prepare()["task"]["trusted_sha"])
+    def test_policy_history_is_independent_and_target_commits_are_not_policy(self):
+        self.load.side_effect = load_git_snapshot
+        prepared = self.prepare()
+        self.assertEqual(self.policy, prepared["task"]["trusted_sha"])
+        self.assertNotIn(self.policy, self.command("rev-list", "--all").splitlines())
+        for code_commit in (self.base, self.head):
+            with self.subTest(code_commit=code_commit), self.assertRaisesRegex(Error, "policy commit is unavailable"):
+                prepare_review(self.root, "owner/repo", self.base, self.head, code_commit,
+                               memory_root=self.memory)
+
+    def test_overlapping_policy_roots_rejected_before_reads_or_writes(self):
+        before = file_tree(self.directory)
+        for memory in (self.root, self.root / "policy", self.directory):
+            with self.subTest(memory=memory), self.assertRaisesRegex(Error, "non-overlapping"):
+                prepare_review(self.root, "owner/repo", self.base, self.head, self.policy,
+                               memory_root=memory)
+        self.load.assert_not_called()
+        self.assertEqual(before, file_tree(self.directory))
+
+    def test_memory_root_is_required_without_target_fallback(self):
+        before = file_tree(self.root)
+        with self.assertRaisesRegex(TypeError, "memory_root"):
+            prepare_review(self.root, "owner/repo", self.base, self.head, self.policy)
+        self.assertEqual(before, file_tree(self.root))
 
     def test_safe_offline_html_and_no_publishing(self):
         html = render_html({"unsafe": "</pre><script>alert('x')</script>"})

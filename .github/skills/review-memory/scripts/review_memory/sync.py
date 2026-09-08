@@ -7,7 +7,7 @@ import uuid
 from . import collect
 from .common import Error, digest, load_json, load_yaml, lock, safe_path, utcnow, write_json
 from .core import initialize, validate_config
-from .propose import prepare_candidates
+from .propose import load_saved_proposal
 
 
 def _state_path(root: Path, offline: bool) -> Path:
@@ -48,59 +48,177 @@ def _configuration(root: Path) -> dict:
     return config
 
 
-def _learning(root: Path, state: dict, limit: int) -> dict:
-    registered = {}
+def _task_reference(root: Path, path: Path, task: dict) -> dict:
+    return {
+        "task_id": task["task_id"],
+        "path": path.relative_to(root).as_posix(),
+        "input_hash": task["input_hash"],
+        "pr": task["pr"],
+        "offline": task["offline"],
+    }
+
+
+def _task_gap(path: Path, reason: str) -> dict:
+    return {"kind": "task", "path": path.as_posix(), "reason": reason}
+
+
+def _proposal_gap(path: Path, reason: str) -> dict:
+    return {"kind": "proposal", "path": path.as_posix(), "reason": reason}
+
+
+def _relevant_task_hint(root: Path, directory: Path, related_task_ids: set[str],
+                        repository: str, offline: bool) -> bool:
+    try:
+        task_path = safe_path(root, directory.relative_to(root) / "task.json")
+        if not task_path.exists():
+            return True
+        task = load_json(task_path)
+    except (Error, OSError):
+        return True
+    if not isinstance(task, dict):
+        return True
+    task_id = task.get("task_id")
+    if isinstance(task_id, str) and task_id in related_task_ids:
+        return True
+    if task.get("repository") != repository:
+        return False
+    if type(task.get("offline")) is not bool:
+        return True
+    return task["offline"] is offline
+
+
+def _learning_tasks(root: Path, repository: str, offline: bool,
+                    state: dict) -> tuple[dict[str, dict], list[dict], set[str], set[str]]:
+    tasks: dict[str, dict] = {}
+    gaps: list[dict] = []
+    seen_paths: set[Path] = set()
+    related_task_ids: set[str] = set()
+    invalid_task_ids: set[str] = set()
+    duplicate_task_ids: set[str] = set()
+    tasks_dir = safe_path(root, ".review/local/proposals/tasks")
+
+    def remember(path: Path, task: dict) -> None:
+        task_id = task["task_id"]
+        existing = tasks.get(task_id)
+        if existing is None:
+            tasks[task_id] = {"task": task, "path": path, "reference": _task_reference(root, path, task)}
+            return
+        if existing["path"] == path:
+            return
+        duplicate_task_ids.add(task_id)
+        invalid_task_ids.add(task_id)
+        tasks.pop(task_id, None)
+        gaps.append(_task_gap(existing["path"].relative_to(root),
+                              f"Duplicate learning task ID also exists at {path.relative_to(root).as_posix()}."))
+        gaps.append(_task_gap(path.relative_to(root),
+                              f"Duplicate learning task ID also exists at {existing['path'].relative_to(root).as_posix()}."))
+
     for task_id, reference in state["tasks"].items():
+        related_task_ids.add(task_id)
         if not isinstance(reference, dict):
-            raise Error("Invalid learning inbox reference.")
-        path = safe_path(root, reference.get("path", ""))
-        if path.parent != safe_path(root, ".review/local/proposals/tasks"):
-            raise Error("Learning inbox task is outside the task directory.")
-        task = load_json(path)
-        if (not isinstance(task, dict) or task.get("task_id") != task_id
-                or task.get("task_type") != "induce" or task.get("repository") != state["repository"]
-                or not isinstance(task.get("input"), dict) or not isinstance(task.get("evidence"), list)
-                or type(task.get("pr")) is not int or task["pr"] != reference.get("pr")
-                or task.get("input_hash") != reference.get("input_hash")
-                or digest(task.get("input")) != task.get("input_hash")
-                or task.get("evidence") != task["input"].get("evidence")):
-            raise Error("Learning inbox task binding changed.")
-        registered[task_id] = task
+            invalid_task_ids.add(task_id)
+            gaps.append(_task_gap(Path(f".review/local/state/{task_id}.json"), "Invalid sync learning reference."))
+            continue
+        if not isinstance(reference.get("path"), str) or not reference["path"]:
+            invalid_task_ids.add(task_id)
+            gaps.append(_task_gap(Path(f".review/local/state/{task_id}.json"), "Invalid sync learning task path."))
+            continue
+        try:
+            path = safe_path(root, reference.get("path", ""))
+        except Error as exc:
+            invalid_task_ids.add(task_id)
+            gaps.append(_task_gap(Path(f".review/local/state/{task_id}.json"), str(exc)))
+            continue
+        seen_paths.add(path)
+        try:
+            task = collect.load_learning_task(root, path, repository=repository)
+        except (Error, OSError) as exc:
+            invalid_task_ids.add(task_id)
+            gaps.append(_task_gap(path.relative_to(root), str(exc)))
+            continue
+        if task["offline"] is not offline:
+            invalid_task_ids.add(task_id)
+            gaps.append(_task_gap(path.relative_to(root), "Sync learning reference points to the wrong offline mode."))
+            continue
+        if (task["task_id"] != task_id or reference.get("input_hash") != task["input_hash"]
+                or reference.get("pr") != task["pr"]):
+            invalid_task_ids.add(task_id)
+            gaps.append(_task_gap(path.relative_to(root), "Sync learning reference no longer matches its saved task."))
+            continue
+        remember(path, task)
+
+    if tasks_dir.exists():
+        for path in sorted(tasks_dir.glob("*.json")):
+            path = safe_path(root, path.relative_to(root))
+            if path in seen_paths:
+                continue
+            try:
+                task = collect.load_learning_task(root, path, repository=repository)
+            except (Error, OSError) as exc:
+                related_task_ids.add(path.stem)
+                invalid_task_ids.add(path.stem)
+                gaps.append(_task_gap(path.relative_to(root), str(exc)))
+                continue
+            if task["offline"] is not offline:
+                continue
+            related_task_ids.add(task["task_id"])
+            if task["task_id"] in duplicate_task_ids:
+                continue
+            remember(path, task)
+
+    return tasks, gaps, related_task_ids, invalid_task_ids
+
+
+def _learning(root: Path, state: dict, limit: int) -> dict:
+    tasks, gaps, related_task_ids, invalid_task_ids = _learning_tasks(
+        root, state["repository"], state["offline"], state)
     completed = set()
     groups = {}
+    lineage = {}
     proposal_count = 0
     proposals = safe_path(root, ".review/local/proposals")
-    for manifest_path in sorted(proposals.glob("*/proposal.json")):
-        manifest_path = safe_path(root, manifest_path.relative_to(root))
-        manifest = load_json(manifest_path)
-        if not isinstance(manifest, dict):
-            raise Error("Invalid proposal manifest in learning library.")
-        task_id = manifest.get("task_id")
-        if task_id not in registered:
+    for directory in sorted(proposals.iterdir()) if proposals.exists() else []:
+        directory = safe_path(root, directory.relative_to(root))
+        if directory.name == "tasks" or not directory.is_dir():
             continue
-        task = load_json(safe_path(root, manifest_path.parent.relative_to(root) / "task.json"))
-        response = load_json(safe_path(root, manifest_path.parent.relative_to(root) / "response.json"))
-        if (task != registered[task_id] or not isinstance(response, dict)
-                or response.get("task_id") != task_id
-                or response.get("input_hash") != task["input_hash"]
-                or manifest.get("input_hash") != task["input_hash"]
-                or digest(response) != manifest.get("response_hash")
-                or digest({"task": task, "response": response}) != manifest_path.parent.name
-                or not isinstance(manifest.get("candidates"), list)
-                or not isinstance(response.get("candidates"), list)
-                or len(manifest["candidates"]) != len(response["candidates"])):
-            raise Error("Saved proposal bindings changed; learning completion is not trusted.")
-        if manifest["candidates"] != prepare_candidates(root, task, response):
-            raise Error("Saved candidate derivation differs from its bound evidence.")
-        for row in manifest["candidates"]:
+        manifest_path = directory / "proposal.json"
+        try:
+            manifest = load_json(manifest_path)
+        except Error as exc:
+            if _relevant_task_hint(root, directory, related_task_ids, state["repository"], state["offline"]):
+                gaps.append(_proposal_gap(manifest_path.relative_to(root), str(exc)))
+            continue
+        if not isinstance(manifest, dict):
+            if _relevant_task_hint(root, directory, related_task_ids, state["repository"], state["offline"]):
+                gaps.append(_proposal_gap(manifest_path.relative_to(root), "Invalid proposal manifest in learning library."))
+            continue
+        task_id = manifest.get("task_id")
+        if not isinstance(task_id, str):
+            if _relevant_task_hint(root, directory, related_task_ids, state["repository"], state["offline"]):
+                gaps.append(_proposal_gap(manifest_path.relative_to(root), "Invalid proposal task identity."))
+            continue
+        if task_id not in related_task_ids and not _relevant_task_hint(
+                root, directory, related_task_ids, state["repository"], state["offline"]):
+            continue
+        task_info = tasks.get(task_id)
+        if task_info is None:
+            if task_id in invalid_task_ids:
+                continue
+            gaps.append(_proposal_gap(manifest_path.relative_to(root),
+                                      "Saved proposal is bound to an invalid or missing learning task."))
+            continue
+        try:
+            proposal = load_saved_proposal(root, manifest_path, expected_task=task_info["task"])
+        except (Error, OSError, UnicodeError) as exc:
+            gaps.append(_proposal_gap(manifest_path.relative_to(root), str(exc)))
+            continue
+        task = proposal["task"]
+        for row in proposal["candidates"]:
             knowledge = row["knowledge"]
-            candidate_path = safe_path(root, manifest_path.parent.relative_to(root)
-                                       / f"{knowledge['id']}-r{knowledge['revision']}.yaml")
-            if load_yaml(candidate_path) != knowledge:
-                raise Error("Saved candidate file differs from its proposal.")
+            candidate_path = row["path"]
             grouping = {key: knowledge.get(key) for key in
                         ("principle", "applicability", "exceptions", "execution", "enforcement", "detector_ref")}
-            key = "L-" + digest(grouping)
+            key = "L-" + collect.digest(grouping)
             group = groups.setdefault(key, {
                 "id": key, "title": knowledge["title"], **grouping,
                 "authority": "unapproved", "proposals": [], "prs": [],
@@ -113,24 +231,72 @@ def _learning(root: Path, state: dict, limit: int) -> dict:
             })
             if task["pr"] not in group["prs"]:
                 group["prs"].append(task["pr"])
+            revisions = lineage.setdefault(knowledge["id"], {})
+            revision = revisions.setdefault(knowledge["revision"], {
+                "revision": knowledge["revision"], "entry_ids": [], "prs": [],
+                "candidate_paths": [], "evidence_ids": [],
+            })
+            if key not in revision["entry_ids"]:
+                revision["entry_ids"].append(key)
+            if task["pr"] not in revision["prs"]:
+                revision["prs"].append(task["pr"])
+            candidate_relative = candidate_path.relative_to(root).as_posix()
+            if candidate_relative not in revision["candidate_paths"]:
+                revision["candidate_paths"].append(candidate_relative)
+            for evidence_id in row["evidence_ids"]:
+                if evidence_id not in revision["evidence_ids"]:
+                    revision["evidence_ids"].append(evidence_id)
         completed.add(task_id)
         proposal_count += 1
-    entries = sorted(groups.values(), key=lambda item: item["id"])
-    index_path = safe_path(root, f".review/local/learning/{'fixture-' if state['offline'] else ''}index.json")
+    entries = []
+    for item in sorted(groups.values(), key=lambda group: group["id"]):
+        entries.append({
+            **item,
+            "prs": sorted(item["prs"]),
+            "proposals": sorted(
+                item["proposals"],
+                key=lambda proposal: (proposal["knowledge_id"], proposal["revision"], proposal["task_id"], proposal["path"]),
+            ),
+        })
+    lineage_entries = [{
+        "knowledge_id": knowledge_id,
+        "revisions": sorted(
+            (
+                {
+                    **revision,
+                    "entry_ids": sorted(revision["entry_ids"]),
+                    "prs": sorted(revision["prs"]),
+                    "candidate_paths": sorted(revision["candidate_paths"]),
+                    "evidence_ids": sorted(revision["evidence_ids"]),
+                    "has_alternatives": len(revision["entry_ids"]) > 1,
+                }
+                for revision in revisions.values()
+            ),
+            key=lambda item: item["revision"],
+        ),
+    } for knowledge_id, revisions in sorted(lineage.items())]
+    index_path = safe_path(root, collect.learning_index_relative(state["offline"]))
     write_json(index_path, {
         "schema_version": 1, "repository": state["repository"], "offline": state["offline"],
         "authority": "unapproved", "updated_at": utcnow(), "entries": entries,
         "grouping": "Exact principle and applicability only; semantic merging requires host reasoning.",
+        "lineage": lineage_entries,
         "completed_task_ids": sorted(completed),
+        "coverage_gaps": gaps,
     })
-    pending = [{"task_id": task_id, **reference} for task_id, reference in state["tasks"].items()
+    pending = [info["reference"] for task_id, info in sorted(
+        tasks.items(), key=lambda item: (item[1]["task"]["pr"], item[0]))
                if task_id not in completed]
+    learning_prs = {info["task"]["pr"] for info in tasks.values()}
     return {
         "knowledge_path": index_path.relative_to(root).as_posix(),
         "knowledge_count": len(entries), "proposal_count": proposal_count,
         "completed_task_count": len(completed), "pending_task_count": len(pending),
         "pending_tasks": pending[:limit], "pending_tasks_omitted": max(0, len(pending) - limit),
-        "learning_complete": not pending, "approval": "unapproved; human approval remains separate",
+        "learning_pr_count": len(learning_prs),
+        "learning_gap_count": len(gaps), "learning_gaps": gaps,
+        "learning_complete": not pending and not gaps,
+        "approval": "unapproved; human approval remains separate",
     }
 
 
@@ -141,10 +307,12 @@ def project_status(root: Path, *, offline: bool = False, limit: int = 20) -> dic
     config = _configuration(root)
     with lock(root):
         state = _load_state(root, config["repository"], offline)
-        return {"status": "ready", "repository": config["repository"], "offline": offline,
+        learning = _learning(root, state, limit)
+        return {"status": "partial" if learning["learning_gap_count"] else "ready",
+                "repository": config["repository"], "offline": offline,
                 "collection_complete": state["discovery_complete"] and not state["queue"],
                 "remaining_pr_count": len(state["queue"]), "collected_pr_count": len(state["seen"]),
-                "last_scan_at": state["last_scan_at"], **_learning(root, state, limit)}
+                "last_scan_at": state["last_scan_at"], **learning}
 
 
 def sync_project(root: Path, repository: str | None = None, *, max_prs: int = 20,
@@ -228,5 +396,7 @@ def sync_project(root: Path, repository: str | None = None, *, max_prs: int = 20
         run["complete"] = run["collection_complete"]
         run["status"] = "partial" if run["failures"] else ("batch_complete" if state["queue"] else "complete")
         run.update(_learning(root, state, 20))
+        if run["learning_gap_count"]:
+            run["status"] = "partial"
         write_json(safe_path(root, run_path), run)
         return run

@@ -3,7 +3,8 @@
 Dataset v1 contains only ``schema_version``, ``timeline`` (historical/simulated),
 ``windows`` (train/dev/test, each with inclusive start and exclusive end), and
 chronologically ordered ``events``. Review events have id, type="review",
-available_at, repository, base, head, trusted_ref, and optional group="D".
+available_at, repository, base, head, trusted_ref, and optional group="D" and
+context_paths (portable repository file paths read only at those pinned commits).
 Feedback events have only id, type="feedback", available_at, and review_id;
 their contents are never ingested. All revisions are full immutable commit SHAs.
 
@@ -27,6 +28,9 @@ from .common import (
     Error, digest, git, load_json, resolve_commit, safe_path, timestamp,
     utcnow, write_json,
 )
+from .storage import validate_memory_root
+from .repository_context import _path
+from .review_contract import SCHEMA_VERSION as REVIEW_SCHEMA
 
 
 DATASET_SCHEMA = 1
@@ -116,7 +120,7 @@ def _dataset(data):
             raise Error("Event must be an object.")
         if event.get("type") == "review":
             _object(event, {"id", "type", "available_at", "repository", "base", "head", "trusted_ref"},
-                    {"group"}, "review event")
+                    {"group", "context_paths"}, "review event")
             if event.get("group", "D") != "D":
                 raise Error("Only group D is supported; this is not an A/B/C/D comparison.")
             repository = event["repository"]
@@ -125,6 +129,10 @@ def _dataset(data):
             for field in ("base", "head", "trusted_ref"):
                 if not isinstance(event[field], str) or not re.fullmatch(r"(?:[a-f0-9]{40}|[a-f0-9]{64})", event[field]):
                     raise Error(f"{field} must be a full lowercase commit SHA.")
+            paths = event.get("context_paths", [])
+            _array(paths, "review context_paths")
+            for path in paths:
+                _path(path)
         elif event.get("type") == "feedback":
             _object(event, {"id", "type", "available_at", "review_id"}, label="feedback event")
             _identifier(event["review_id"], "review_id")
@@ -157,11 +165,15 @@ def _dataset(data):
     return assigned, summary
 
 
-def _commit_times(root, event):
+def _commit_times(target_root, memory_root, event):
+    from .core import resolve_policy_commit
+
     times = {}
     for field in ("base", "head", "trusted_ref"):
         sha = event[field]
-        if resolve_commit(root, sha) != sha:
+        root = memory_root if field == "trusted_ref" else target_root
+        resolve = resolve_policy_commit if field == "trusted_ref" else resolve_commit
+        if resolve(root, sha) != sha:
             raise Error(f"{field} does not identify a commit directly.")
         committed_at = git(root, "show", "-s", "--format=%cI", sha)
         if timestamp(committed_at) > timestamp(event["available_at"]):
@@ -170,18 +182,19 @@ def _commit_times(root, event):
     return times
 
 
-def prepare_replay(root: Path, dataset_path: Path) -> dict:
+def prepare_replay(target_root: Path, dataset_path: Path, *, memory_root: Path) -> dict:
     """Prepare real production-engine tasks without touching production run state."""
     from .review import prepare_review
 
-    root = Path(root).resolve()
+    target_root = Path(target_root).resolve()
+    memory_root = validate_memory_root(target_root, memory_root)
     dataset = _read(Path(dataset_path))
     assigned, windows = _dataset(dataset)
     # Validate every revision before creating any tasks, including later windows.
-    times = {event["id"]: _commit_times(root, event)
+    times = {event["id"]: _commit_times(target_root, memory_root, event)
              for event, _ in assigned if event["type"] == "review"}
     replay_id = "replay-" + uuid.uuid4().hex
-    directory = safe_path(root, f".review/local/evaluation/{replay_id}")
+    directory = safe_path(memory_root, f".review/local/evaluation/{replay_id}")
     directory.mkdir(parents=True, exist_ok=False)
     runs = []
     try:
@@ -189,9 +202,10 @@ def prepare_replay(root: Path, dataset_path: Path) -> dict:
             if event["type"] != "review":
                 continue
             prepared = prepare_review(
-                root, event["repository"], event["base"], event["head"], event["trusted_ref"],
+                target_root, event["repository"], event["base"], event["head"], event["trusted_ref"],
                 max_files=100, max_bytes=500000, at=event["available_at"],
-                runs_root=directory / "runs",
+                memory_root=memory_root, runs_root=directory / "runs",
+                context_paths=event.get("context_paths", []),
             )
             run_id = prepared["run_id"]
             _identifier(run_id, "run_id")
@@ -202,12 +216,15 @@ def prepare_replay(root: Path, dataset_path: Path) -> dict:
                 "case_id": event["id"], "split": split, "group": "D",
                 "available_at": event["available_at"], "repository": event["repository"],
                 "base": event["base"], "head": event["head"], "trusted_ref": event["trusted_ref"],
+                "code_source": "target_repository", "policy_source": "external_memory",
+                "context_paths": task["context_selection"]["requested_paths"],
                 "commit_times": times[event["id"]], "run_id": run_id,
                 "task_hash": digest(task), "request_hash": digest(request),
                 "requires_response": prepared["requires_response"],
             })
         manifest = {
             "schema_version": 1, "replay_id": replay_id, "created_at": utcnow(),
+            "code_source": "target_repository", "policy_source": "external_memory",
             "status": "prepared", "mode": "single_arm_pipeline_pilot",
             "timeline": dataset["timeline"], "dataset": dataset, "dataset_hash": digest(dataset),
             "reconstruction_status": "simulation_only" if dataset["timeline"] == "simulated" else "unverified",
@@ -225,6 +242,7 @@ def prepare_replay(root: Path, dataset_path: Path) -> dict:
         raise
     return {
         "replay_id": replay_id, "mode": manifest["mode"], "timeline": dataset["timeline"],
+        "code_source": manifest["code_source"], "policy_source": manifest["policy_source"],
         "manifest_path": str(directory / "manifest.json"), "runs_root": str(directory / "runs"),
         "dataset_hash": manifest["dataset_hash"], "run_list_hash": manifest["run_list_hash"],
         "reconstruction_status": manifest["reconstruction_status"],
@@ -378,9 +396,12 @@ def score_replay(root: Path, replay_id: str, labels_path: Path) -> dict:
         raise Error("Frozen replay manifest changed.")
     if manifest.get("schema_version") != 1 or manifest.get("replay_id") != replay_id or manifest.get("status") != "prepared":
         raise Error("Replay manifest is not a prepared v1 replay.")
+    if manifest.get("code_source") != "target_repository" or manifest.get("policy_source") != "external_memory":
+        raise Error("Replay requires independent target code and external memory policy provenance.")
     if digest(manifest["dataset"]) != manifest["dataset_hash"] or digest(manifest["runs"]) != manifest["run_list_hash"]:
         raise Error("Frozen dataset or run linkage changed.")
-    _dataset(manifest["dataset"])
+    assigned, _ = _dataset(manifest["dataset"])
+    events = {event["id"]: event for event, _ in assigned if event["type"] == "review"}
     reports, report_hashes, tasks = {}, {}, {}
     for run in manifest["runs"]:
         _identifier(run["run_id"], "run_id")
@@ -389,6 +410,23 @@ def score_replay(root: Path, replay_id: str, labels_path: Path) -> dict:
         request = _read(safe_path(run_directory, "request.json"))
         if digest(task) != run["task_hash"] or digest(request) != run["request_hash"]:
             raise Error("Frozen production task or request changed.")
+        if task.get("runs_path") != run_directory.parent.relative_to(root).as_posix():
+            raise Error("Frozen task belongs to a different isolated evaluation directory.")
+        for field, task_field in (("repository", "repository"), ("base", "base_sha"), ("head", "head_sha"),
+                                  ("trusted_ref", "trusted_sha"), ("available_at", "effective_at"),
+                                  ("code_source", "code_source"), ("policy_source", "policy_source")):
+            if run.get(field) != task.get(task_field):
+                raise Error(f"Frozen replay run has mismatched {field} linkage.")
+        if task.get("schema_version") != REVIEW_SCHEMA:
+            raise Error("Frozen replay requires the supported review task contract.")
+        selection = task.get("context_selection")
+        event = events.get(run["case_id"])
+        if not isinstance(selection, dict) or event is None:
+            raise Error("Frozen replay is missing repository context linkage.")
+        expected_paths = list(dict.fromkeys(event.get("context_paths", [])))
+        if (run.get("context_paths") != selection.get("requested_paths")
+                or selection.get("requested_paths") != expected_paths):
+            raise Error("Frozen replay run has mismatched repository context linkage.")
         completion_path = safe_path(run_directory, "completion.json")
         if not completion_path.is_file():
             raise Error(f"Review {run['case_id']} is unfinished: completion.json is missing.")
@@ -409,10 +447,13 @@ def score_replay(root: Path, replay_id: str, labels_path: Path) -> dict:
             raise Error("Cannot score an unfinished review report.")
         if report.get("status") not in {"complete", "incomplete"}:
             raise Error("Unknown review report status.")
-        for field in ("run_id", "task_id", "input_hash", "repository", "base_sha", "head_sha",
-                      "trusted_sha", "approved_snapshot_hash", "runtime"):
+        for field in ("schema_version", "run_id", "task_id", "input_hash", "repository", "base_sha", "head_sha",
+                      "trusted_sha", "approved_snapshot_hash", "runtime", "code_source", "policy_source",
+                      "runs_path"):
             if field not in report or report[field] != task.get(field):
                 raise Error(f"Finished report has mismatched {field} linkage.")
+        if report.get("context_selection") != task["context_selection"]:
+            raise Error("Finished report has mismatched repository context selection.")
         reports[run["case_id"]] = report
         report_hashes[run["case_id"]] = digest(report)
         tasks[run["case_id"]] = task
@@ -428,6 +469,7 @@ def score_replay(root: Path, replay_id: str, labels_path: Path) -> dict:
     result = {
         "schema_version": 1, "replay_id": replay_id, "scored_at": utcnow(),
         "mode": "single_arm_pipeline_pilot", "timeline": manifest["timeline"],
+        "code_source": manifest["code_source"], "policy_source": manifest["policy_source"],
         "reconstruction_status": manifest["reconstruction_status"],
         "reconstruction_gaps": manifest["reconstruction_gaps"],
         "manifest_hash": stored_hash, "dataset_hash": manifest["dataset_hash"],

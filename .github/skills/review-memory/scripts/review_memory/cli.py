@@ -8,19 +8,23 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .common import Error, load_yaml, safe_path
-from .core import approval_request, approve, initialize, render_snapshot, validate_config
+from .common import Error, safe_path
+from .core import approval_request, approve, render_snapshot
+from .storage import initialize_project, project_config, project_storage
 
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
         prog="review-memory",
-        description="Evidence-backed, human-approved repository review. Advisory and local-only.",
+        description="Accumulate project knowledge, review PRs, and guide authorized host feature implementation.",
     )
     result.add_argument("--version", action="version", version=__version__)
     result.add_argument("--root", type=Path, default=Path.cwd(), help="Target repository; defaults to current directory.")
+    result.add_argument("--data-home", type=Path,
+                        help="External project-data parent directory; defaults to REVIEW_MEMORY_HOME "
+                             "or ~/.review-memory/projects. Never inside the target or Skill.")
     commands = result.add_subparsers(dest="command", required=True)
-    init = commands.add_parser("init", help="Create local state and empty, untrusted knowledge configuration.")
+    init = commands.add_parser("init", help="Create external project memory without modifying the target repository.")
     init.add_argument("--repository", required=True)
     commands.add_parser("doctor", help="Show runtime dependencies and repository configuration.")
     sync = commands.add_parser("sync", help="Connect a project and resume merged-PR collection and the learning inbox.")
@@ -45,6 +49,16 @@ def parser() -> argparse.ArgumentParser:
     propose = commands.add_parser("propose", help="Validate host induction results; never approve them.")
     propose.add_argument("--task", type=Path, required=True)
     propose.add_argument("--response", type=Path, required=True)
+    queue = commands.add_parser("approval-queue", help="Show evidence-bound candidates and a readable approval handoff.")
+    queue.add_argument("--limit", type=int, default=20)
+    queue.add_argument("--offset", type=int, default=0)
+    prepare = commands.add_parser("prepare-approval", help="Prepare an unsigned knowledge request for maintainer review.")
+    prepare.add_argument("--candidate", type=Path, required=True)
+    prepare.add_argument("--identity", required=True)
+    prepare.add_argument("--owner", required=True)
+    prepare.add_argument("--reason", required=True)
+    prepare.add_argument("--effective-from")
+    prepare.add_argument("--revision", type=int)
     approval = commands.add_parser("approval-request", help="Prepare exact content for independent maintainer signing.")
     approval.add_argument("--file", type=Path, required=True)
     approval.add_argument("--kind", choices=("knowledge", "detector"), required=True)
@@ -53,15 +67,35 @@ def parser() -> argparse.ArgumentParser:
     approved = commands.add_parser("approve", help="Verify a maintainer's detached SSH signature and store approved revision.")
     approved.add_argument("--request", type=Path, required=True)
     approved.add_argument("--signature", type=Path, required=True)
-    snapshot = commands.add_parser("snapshot", help="Render approved knowledge from a trusted Git commit.")
-    snapshot.add_argument("--trusted-ref", required=True)
+    snapshot = commands.add_parser("snapshot", help="Render approved knowledge from the external policy Git repository.")
+    snapshot.add_argument("--trusted-ref", required=True, help="Trusted commit in this project's external memory repository.")
     review = commands.add_parser("review", help="Prepare review at immutable Git revisions; never execute project code.")
-    for option in ("repository", "base", "head", "trusted-ref"):
-        review.add_argument("--" + option, required=True)
+    review.add_argument("--repository", help="Project repository; defaults to the saved binding.")
+    review.add_argument("--pr", help="GitHub PR number or URL; resolves immutable local revisions without checkout/fetch.")
+    review.add_argument("--base", help="Explicit base revision when not using --pr.")
+    review.add_argument("--head", help="Explicit head revision when not using --pr.")
+    review.add_argument("--trusted-ref", required=True, help="Trusted commit in the external memory/policy repository, not PR head.")
     review.add_argument("--max-files", type=int, default=100)
     review.add_argument("--max-bytes", type=int, default=500000)
+    review.add_argument("--context-path", action="append", default=[],
+                        type=lambda value: value.replace("\\", "/"),
+                        help="Additional repository-relative file to freeze at base/head; repeatable, "
+                             "within the same file/byte budget. Never reads the worktree.")
     review.add_argument("--reference-query", help="Optionally freeze relevant external reference packs into the host task.")
     review.add_argument("--reference-limit", type=int, default=3)
+    feature = commands.add_parser("feature", help="Prepare project context for user-authorized host feature implementation.")
+    feature.add_argument("--repository", help="Project repository; defaults to the saved binding.")
+    feature.add_argument("--goal", required=True, help="The actual user-requested feature and acceptance criteria.")
+    feature.add_argument("--base", default="HEAD", help="Immutable code baseline; defaults to current HEAD.")
+    feature.add_argument("--trusted-ref", help="Selected external policy commit; missing policy remains a visible gap.")
+    feature.add_argument("--context-path", action="append", required=True,
+                         type=lambda value: value.replace("\\", "/"),
+                         help="Relevant existing repository file selected by the host; repeatable.")
+    feature.add_argument("--max-files", type=int, default=100)
+    feature.add_argument("--max-bytes", type=int, default=500000)
+    finish = commands.add_parser("feature-finish", help="Record actual host implementation/check results; execute nothing.")
+    finish.add_argument("--feature-id", required=True)
+    finish.add_argument("--response", type=Path, required=True)
     final = commands.add_parser("finalize", help="Validate host semantic findings against fixed code evidence.")
     final.add_argument("--run-id", required=True)
     final.add_argument("--response", type=Path, required=True)
@@ -82,30 +116,11 @@ def parser() -> argparse.ArgumentParser:
 
 
 def dispatch(args):
-    root = args.root.resolve()
-    if not root.is_dir():
+    target = args.root.expanduser().resolve()
+    if not target.is_dir():
         raise Error("Target root must be an existing directory.")
     if getattr(args, "repository", None) is not None:
         args.repository = args.repository.lower()
-    if args.command == "init":
-        return initialize(root, args.repository)
-    if args.command == "sync":
-        from .sync import sync_project
-        return sync_project(root, args.repository, max_prs=args.max_prs, since=args.since,
-                            refresh=args.refresh, fixture=args.fixture)
-    if args.command == "doctor":
-        configuration = safe_path(root, ".review/config.yaml")
-        result = {
-            "version": __version__, "python": sys.version.split()[0],
-            "tools": {tool: shutil.which(tool) for tool in ("git", "gh", "ssh-keygen")},
-            "initialized": configuration.exists(), "root": str(root),
-            "limitations": ["local reports only", "no project execution", "host model costs may be unknown"],
-        }
-        if configuration.exists():
-            config = load_yaml(configuration)
-            validate_config(config)
-            result["repository"] = config["repository"]
-        return result
     if args.command == "packs":
         from .packs import list_packs, select_packs, source_inventory
         if args.pack_command == "list":
@@ -113,22 +128,71 @@ def dispatch(args):
         if args.pack_command == "sources":
             return source_inventory()
         return select_packs(args.query, args.limit)
-    config = load_yaml(safe_path(root, ".review/config.yaml"))
-    validate_config(config)
+    storage = project_storage(target, args.data_home)
+    result = _dispatch_project(args, storage)
+    return {**result, **storage.describe()}
+
+
+def _dispatch_project(args, storage):
+    root = storage.storage_root
+    if args.command == "init":
+        return initialize_project(storage, args.repository)
+    if args.command == "sync":
+        from .sync import sync_project
+        if safe_path(root, ".review/config.yaml").exists():
+            project_config(storage)
+        else:
+            if args.repository is None:
+                raise Error("First sync requires --repository owner/repo; project memory is stored externally.")
+            initialize_project(storage, args.repository)
+        result = sync_project(root, args.repository, max_prs=args.max_prs, since=args.since,
+                              refresh=args.refresh, fixture=args.fixture)
+        return _learning_actions(result, storage, offline=args.fixture is not None)
+    if args.command == "doctor":
+        configuration = safe_path(root, ".review/config.yaml")
+        result = {
+            "version": __version__, "python": sys.version.split()[0],
+            "tools": {tool: shutil.which(tool) for tool in ("git", "gh", "ssh-keygen")},
+            "initialized": configuration.exists(), "root": str(storage.target_root),
+            "limitations": ["external local reports only", "no target writes or execution", "host model costs may be unknown"],
+        }
+        if configuration.exists():
+            config = project_config(storage)
+            result["repository"] = config["repository"]
+        return result
+    config = project_config(storage)
+    if args.command in {"review", "feature"} and args.repository is None:
+        args.repository = config["repository"]
     if getattr(args, "repository", config["repository"]) != config["repository"]:
         raise Error("Command repository does not match initialized repository.")
     if args.command == "bootstrap":
         from .collect import bootstrap
-        return bootstrap(root, args.repository, args.since, args.until, args.max_prs, args.fixture)
+        from .sync import project_status
+        result = bootstrap(root, args.repository, args.since, args.until, args.max_prs, args.fixture)
+        progress = project_status(root, offline=args.fixture is not None)
+        return _learning_actions({**progress, **result}, storage, offline=args.fixture is not None)
     if args.command == "harvest":
         from .collect import harvest
-        return harvest(root, args.repository, args.pr, args.fixture)
+        from .sync import project_status
+        result = harvest(root, args.repository, args.pr, args.fixture)
+        progress = project_status(root, offline=args.fixture is not None)
+        return _learning_actions({**progress, **result}, storage, offline=args.fixture is not None)
     if args.command == "propose":
         from .propose import propose
         return propose(root, args.task, args.response)
     if args.command == "status":
         from .sync import project_status
-        return project_status(root, offline=args.offline, limit=args.limit)
+        return _learning_actions(project_status(root, offline=args.offline, limit=args.limit),
+                                 storage, offline=args.offline)
+    if args.command == "approval-queue":
+        from .approvals import approval_queue
+        return approval_queue(root, limit=args.limit, offset=args.offset,
+                              target_root=storage.target_root, data_home=storage.data_home)
+    if args.command == "prepare-approval":
+        from .approvals import prepare_approval
+        return prepare_approval(root, args.candidate, args.identity, args.owner, args.reason,
+                                effective_from=args.effective_from, revision=args.revision,
+                                target_root=storage.target_root, data_home=storage.data_home)
     if args.command == "approval-request":
         return approval_request(root, args.file, args.kind, args.identity, args.reason)
     if args.command == "approve":
@@ -137,8 +201,31 @@ def dispatch(args):
         return render_snapshot(root, args.trusted_ref)
     if args.command == "review":
         from .review import prepare_review
-        return prepare_review(root, args.repository, args.base, args.head, args.trusted_ref, args.max_files, args.max_bytes,
-                              reference_query=args.reference_query, reference_limit=args.reference_limit)
+        if args.pr is not None:
+            if args.base is not None or args.head is not None:
+                raise Error("Choose --pr or explicit --base/--head, not both.")
+            from .pull_requests import prepare_pull_request_review
+            return prepare_pull_request_review(
+                storage.target_root, args.repository, args.pr, args.trusted_ref, memory_root=root,
+                max_files=args.max_files, max_bytes=args.max_bytes, context_paths=args.context_path,
+                reference_query=args.reference_query, reference_limit=args.reference_limit,
+            )
+        if args.base is None or args.head is None:
+            raise Error("Review requires --pr or both --base and --head.")
+        return prepare_review(storage.target_root, args.repository, args.base, args.head,
+                              args.trusted_ref, args.max_files, args.max_bytes, memory_root=root,
+                              reference_query=args.reference_query, reference_limit=args.reference_limit,
+                              context_paths=args.context_path)
+    if args.command == "feature":
+        from .feature import prepare_feature
+        return prepare_feature(
+            storage.target_root, args.repository, args.goal, memory_root=root,
+            base=args.base, trusted_ref=args.trusted_ref, context_paths=args.context_path,
+            max_files=args.max_files, max_bytes=args.max_bytes,
+        )
+    if args.command == "feature-finish":
+        from .feature import finish_feature
+        return finish_feature(root, args.feature_id, args.response)
     if args.command == "finalize":
         from .review import finalize_review
         if args.replay_id:
@@ -149,11 +236,26 @@ def dispatch(args):
         return finalize_review(root, args.run_id, args.response)
     if args.command == "replay":
         from .replay import prepare_replay
-        return prepare_replay(root, args.dataset)
+        return prepare_replay(storage.target_root, args.dataset, memory_root=root)
     if args.command == "score":
         from .replay import score_replay
         return score_replay(root, args.replay_id, args.labels)
     raise Error(f"Unsupported command: {args.command}")
+
+
+def _learning_actions(result, storage, *, offline=False):
+    if result.get("learning_gap_count", 0):
+        result = {**result, "status": "partial"}
+    actions = []
+    if not offline and not result.get("pending_task_count") and result.get("remaining_pr_count", 0):
+        actions.append({"action": "continue_sync", "arguments": storage.arguments("sync")})
+    if result.get("knowledge_count", 0):
+        actions.append({
+            "action": "review_candidates", "arguments": storage.arguments("approval-queue"),
+            "blocks_learning": False,
+            "note": "Read the candidate handoff and select knowledge before preparing a maintainer signing request.",
+        })
+    return {**result, "next_actions": actions}
 
 
 def main(argv=None) -> int:

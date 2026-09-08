@@ -123,20 +123,42 @@ class SyncTests(unittest.TestCase):
         manifest = load_json(path)
         manifest["candidates"][0]["knowledge"]["sources"][0]["version"] = "forged"
         write_json(path, manifest)
-        with self.assertRaisesRegex(Error, "derivation"):
-            project_status(self.root, offline=True)
+        status = project_status(self.root, offline=True)
+        self.assertFalse(status["learning_complete"])
+        self.assertEqual(status["pending_task_count"], 1)
+        self.assertEqual(status["learning_gap_count"], 1)
+        self.assertIn("derivation", status["learning_gaps"][0]["reason"])
+
+    def test_saved_evidence_tampering_does_not_complete_learning(self):
+        first = self.sync()
+        result = self.propose_task(first["pending_tasks"][0])
+        task = load_json(Path(result["proposal"]).parent / "task.json")
+        evidence_path = self.root / task["evidence"][0]["path"]
+        evidence = load_json(evidence_path)
+        evidence["pr"] = 99
+        write_json(evidence_path, evidence)
+        status = project_status(self.root, offline=True)
+        self.assertFalse(status["learning_complete"])
+        self.assertEqual(status["pending_task_count"], 0)
+        self.assertEqual(status["learning_gap_count"], 1)
+        self.assertIn("changed after collection", status["learning_gaps"][0]["reason"])
 
     def test_cli_connects_without_separate_init_and_remembers_repository(self):
-        output = io.StringIO()
-        with contextlib.redirect_stdout(output):
-            code = main(["--root", str(self.root), "sync", "--repository", "Example/Project",
-                         "--fixture", str(self.fixture)])
-        self.assertEqual(code, 0)
-        self.assertEqual(json.loads(output.getvalue())["pending_task_count"], 1)
-        with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(main(["--root", str(self.root), "sync", "--fixture", str(self.fixture)]), 0)
-        with self.assertRaises(Error):
-            sync_project(self.root, "another/repo", fixture=self.fixture)
+        with tempfile.TemporaryDirectory() as data_home:
+            arguments = ["--root", str(self.root), "--data-home", data_home]
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = main([*arguments, "sync", "--repository", "Example/Project",
+                             "--fixture", str(self.fixture)])
+            self.assertEqual(code, 0)
+            result = json.loads(output.getvalue())
+            self.assertEqual(result["pending_task_count"], 1)
+            storage = Path(result["storage_root"])
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main([*arguments, "sync", "--fixture", str(self.fixture)]), 0)
+            with self.assertRaises(Error):
+                sync_project(storage, "another/repo", fixture=self.fixture)
+            self.assertFalse((self.root / ".review").exists())
 
     def test_live_incremental_metadata_and_explicit_feedback_refresh(self):
         meta = collect._Fixture._metadata(self.pr)

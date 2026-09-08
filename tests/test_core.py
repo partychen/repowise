@@ -1,5 +1,7 @@
 import copy
+import contextlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -7,10 +9,45 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".github" / "skills" / "review-memory" / "scripts"))
+PROJECT = Path(__file__).resolve().parents[1]
+SKILL = PROJECT / ".github" / "skills" / "review-memory"
+sys.path.insert(0, str(SKILL / "scripts"))
 
 from review_memory.common import Error, canonical_bytes, digest, load_json, load_yaml, parse_yaml, runtime_info, safe_path, write_yaml
-from review_memory.core import LEGACY_NAMESPACE, NAMESPACE, approval_request, approve, initialize, load_git_snapshot, validate_knowledge
+from review_memory.core import (
+    NAMESPACE, approval_request, approve, initialize, load_git_snapshot,
+    render_snapshot, validate_knowledge, verify_signature,
+)
+
+
+@contextlib.contextmanager
+def fixture_directory():
+    with tempfile.TemporaryDirectory(prefix=".test-review-memory-", dir=PROJECT) as directory:
+        # Disposable sibling repositories stay project-local; the real Skill remains protected.
+        with patch("review_memory.storage._protected_roots", return_value=[SKILL]):
+            yield Path(directory).resolve()
+
+
+def git_command(root, *args, at=None):
+    env = dict(os.environ)
+    if at is not None:
+        env.update(GIT_AUTHOR_DATE=at, GIT_COMMITTER_DATE=at)
+    return subprocess.run(["git", "-C", str(root), "--no-pager", *args],
+                          env=env, check=True, capture_output=True).stdout.decode("utf-8").strip()
+
+
+def initialize_git(root):
+    root.mkdir(parents=True, exist_ok=True)
+    git_command(root, "init", "--quiet")
+    for key, value in (("user.email", "fixture@example.invalid"), ("user.name", "Synthetic fixture"),
+                       ("commit.gpgsign", "false"), ("core.autocrlf", "false"),
+                       ("core.hooksPath", str(root / "no-hooks"))):
+        git_command(root, "config", key, value)
+
+
+def file_tree(root):
+    return {path.relative_to(root).as_posix(): path.read_bytes() if path.is_file() else None
+            for path in root.rglob("*")}
 
 
 def knowledge():
@@ -29,15 +66,19 @@ def knowledge():
 
 class CoreTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.directory = self.enterContext(fixture_directory())
+        self.root = self.directory / "policy"
+        self.target = self.directory / "code"
+        initialize_git(self.target)
         initialize(self.root, "example/project")
 
     def test_init_idempotent_and_no_trust(self):
         self.assertEqual(initialize(self.root, "example/project")["status"], "already_initialized")
         self.assertIn("local/", (self.root / ".review" / ".gitignore").read_text())
+        self.assertIn("project.json", (self.root / ".review" / ".gitignore").read_text())
         self.assertFalse(load_yaml(self.root / ".review" / "config.yaml")["publish"])
+        self.assertFalse((self.root / ".git").exists())
+        self.assertFalse((self.target / ".review").exists())
         with self.assertRaises(Error):
             initialize(self.root, "other/repo")
 
@@ -96,13 +137,22 @@ class CoreTests(unittest.TestCase):
         request = Path(result["request"])
         subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "review-memory-v1", str(request)],
                        capture_output=True, check=True)
-        self.assertEqual(approve(self.root, request, Path(str(request) + ".sig"))["status"], "approved")
+        before = file_tree(self.target)
+        approved = approve(self.root, request, Path(str(request) + ".sig"))
+        self.assertEqual(approved["status"], "approved")
+        self.assertIn("external memory/policy repository", approved["note"])
         self.assertEqual(approve(self.root, request, Path(str(request) + ".sig"))["status"], "already_approved")
-        self._git("init", "-q")
+        initialize_git(self.root)
+        (self.root / ".review" / "project.json").write_text('{"target_root": "private-binding"}')
         self._git("add", ".review")
         self._git("-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-qm", "Synthetic policy")
+        self.assertEqual("", self._git("ls-files", ".review/project.json", ".review/local"))
         snapshot = load_git_snapshot(self.root, "HEAD")
         self.assertEqual(len(snapshot["knowledge"]), 1)
+        self.assertEqual("external_memory", snapshot["manifest"]["policy_source"])
+        self.assertEqual(1, render_snapshot(self.root, "HEAD")["knowledge_count"])
+        self.assertEqual(before, file_tree(self.target))
+        self.assertEqual([], list((self.root / ".review" / "local" / "cache").iterdir()))
         self.assertEqual(load_git_snapshot(self.root, "HEAD", at="2025-01-01T00:00:00Z")["knowledge"], [])
         suspended = knowledge()
         suspended.update(revision=2, maturity="needs_review")
@@ -127,41 +177,55 @@ class CoreTests(unittest.TestCase):
             load_git_snapshot(self.root, "HEAD")
 
     def _git(self, *args):
-        subprocess.run(["git", "-C", str(self.root), *args], check=True, capture_output=True)
+        return git_command(self.root, *args)
 
-    def test_legacy_signature_requires_new_active_revision_after_upgrade(self):
-        key = self.root / "upgrade-test-key"
-        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)],
-                       capture_output=True, check=True)
-        (self.root / ".review" / "allowed_signers").write_text("tester " + key.with_suffix(".pub").read_text())
+    def test_external_policy_requires_its_own_git_history(self):
+        before = file_tree(self.root)
+        with self.assertRaisesRegex(Error, "maintainer must initialize"):
+            load_git_snapshot(self.root, "HEAD")
+        self.assertEqual(before, file_tree(self.root))
+        initialize_git(self.root)
+        with self.assertRaisesRegex(Error, "policy commit is unavailable"):
+            load_git_snapshot(self.root, "HEAD")
+        self._git("add", ".review")
+        self._git("commit", "-qm", "Synthetic policy store")
+        nested = self.root / "nested"
+        initialize(nested, "example/project")
+        before = file_tree(nested)
+        with self.assertRaisesRegex(Error, "own Git toplevel"):
+            load_git_snapshot(nested, "HEAD")
+        self.assertEqual(before, file_tree(nested))
+
+    def test_missing_committed_external_configuration_is_actionable(self):
+        initialize_git(self.root)
+        self._git("commit", "--allow-empty", "-qm", "No policy history")
+        with self.assertRaisesRegex(Error, "maintainer must commit"):
+            load_git_snapshot(self.root, "HEAD")
+
+    def test_policy_cannot_be_a_linked_target_worktree(self):
+        git_command(self.target, "commit", "--allow-empty", "-qm", "Synthetic code history")
+        linked = self.directory / "linked-policy"
+        git_command(self.target, "worktree", "add", "--detach", str(linked), "HEAD")
+        initialize(linked, "example/project")
+        before = file_tree(self.target)
+        with self.assertRaisesRegex(Error, "linked worktrees.*not independent"):
+            load_git_snapshot(linked, "HEAD")
+        self.assertEqual(before, file_tree(self.target))
+
+    def test_signature_namespace_is_explicit_and_current(self):
         candidate = self.root / "candidate.yaml"
         write_yaml(candidate, knowledge())
-        request = Path(approval_request(self.root, candidate, "knowledge", "tester", "Synthetic legacy approval")["request"])
-        legacy = load_json(request)
-        legacy.pop("signature_namespace")
-        legacy["runtime"] = dict(runtime_info(), version="0.1.0")
-        request.write_bytes(canonical_bytes(legacy))
-        subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", LEGACY_NAMESPACE, str(request)],
-                       capture_output=True, check=True)
-        with patch("review_memory.core.runtime_info", return_value=legacy["runtime"]):
-            approve(self.root, request, Path(str(request) + ".sig"))
-        self._git("init", "-q")
-        self._git("add", ".review")
-        self._git("-c", "user.name=Test", "-c", "user.email=test@example.test",
-                  "-c", "commit.gpgsign=false", "commit", "-qm", "Legacy approved policy")
-        with self.assertRaisesRegex(Error, "runtime"):
-            load_git_snapshot(self.root, "HEAD")
-        revision = dict(knowledge(), revision=2)
-        write_yaml(candidate, revision)
-        upgraded = Path(approval_request(self.root, candidate, "knowledge", "tester", "Synthetic reapproval")["request"])
-        subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", NAMESPACE, str(upgraded)],
-                       capture_output=True, check=True)
-        approve(self.root, upgraded, Path(str(upgraded) + ".sig"))
-        self._git("add", ".review")
-        self._git("-c", "user.name=Test", "-c", "user.email=test@example.test",
-                  "-c", "commit.gpgsign=false", "commit", "-qm", "Reapprove current runtime")
-        snapshot = load_git_snapshot(self.root, "HEAD")
-        self.assertEqual([2], [item["revision"] for item in snapshot["knowledge"]])
+        request = Path(approval_request(self.root, candidate, "knowledge", "tester",
+                                        "Synthetic namespace boundary")["request"])
+        payload = load_json(request)
+        self.assertEqual(NAMESPACE, payload["signature_namespace"])
+        variants = [dict(payload, signature_namespace="repo-constitution-v1"),
+                    {key: value for key, value in payload.items() if key != "signature_namespace"}]
+        with patch("review_memory.core.subprocess.run") as process:
+            for invalid in variants:
+                with self.subTest(payload=invalid), self.assertRaisesRegex(Error, "signature namespace"):
+                    verify_signature(invalid, "", "", root=self.root)
+            process.assert_not_called()
 
 
 if __name__ == "__main__":

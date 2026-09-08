@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "task_id": "SYNTHETIC_EXAMPLE_REPLACE_WITH_ACTUAL_TASK_ID",
   "input_hash": "SYNTHETIC_EXAMPLE_REPLACE_WITH_ACTUAL_INPUT_HASH",
   "model": {
@@ -7,6 +7,56 @@
     "model": "unknown",
     "prompt_version": "synthetic-example-not-an-execution"
   },
+  "repository_assessments": [
+    {
+      "dimension": "architecture",
+      "status": "needs_context",
+      "rationale": "Synthetic format example only; no pinned module or dependency-boundary evidence.",
+      "references": []
+    },
+    {
+      "dimension": "reuse_frameworks",
+      "status": "needs_context",
+      "rationale": "No actual existing helper, framework or configuration was inspected.",
+      "references": []
+    },
+    {
+      "dimension": "contracts_types",
+      "status": "needs_context",
+      "rationale": "No actual caller contract or domain-type evidence is supplied.",
+      "references": []
+    },
+    {
+      "dimension": "errors_lifecycle",
+      "status": "needs_context",
+      "rationale": "No actual error propagation or lifecycle evidence is supplied.",
+      "references": []
+    },
+    {
+      "dimension": "concurrency_performance",
+      "status": "needs_context",
+      "rationale": "No actual workload, blocking, locking or allocation path was inspected.",
+      "references": []
+    },
+    {
+      "dimension": "tests_observability",
+      "status": "needs_context",
+      "rationale": "No actual test, logging or metric conventions were inspected.",
+      "references": []
+    },
+    {
+      "dimension": "idioms",
+      "status": "needs_context",
+      "rationale": "No BASE implementation is available to establish applicable local idioms.",
+      "references": []
+    },
+    {
+      "dimension": "change_scope",
+      "status": "needs_context",
+      "rationale": "No real change, migration intent or exception evidence is supplied.",
+      "references": []
+    }
+  ],
   "assessments": [
     {
       "knowledge_id": "K-synthetic-api-domain-boundary",

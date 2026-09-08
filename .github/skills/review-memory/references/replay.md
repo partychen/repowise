@@ -10,7 +10,7 @@ measured benefits over other review methods.
 Prepare JSON with exactly `schema_version: 1`, `timeline`, `windows`, and `events`.
 `timeline` is `historical` or `simulated`; use the latter for constructed history.
 Unknown keys are rejected at every schema object. Do not embed labels, answer
-keys, feedback content, or extra context paths in the dataset.
+keys, feedback content, or unbound filesystem context in the dataset.
 
 `windows` has `train`, `dev`, `test`, each with RFC 3339 `start` and `end`.
 Windows are ordered, nonoverlapping, and nonempty; start is inclusive and end is
@@ -23,10 +23,19 @@ id, type: "review", available_at, repository, base, head, trusted_ref
 ```
 
 An optional `group` may only be `"D"`. All three revisions must be full lowercase
-commit SHAs already available in the target Git repository, not mutable branch
-names or example placeholders. For each review, `trusted_ref` must be an ancestor
-of or equal to `base`, as required by the production engine. IDs are unique safe identifiers. The dataset
+commit SHAs, not mutable branch names or example placeholders. Base/head must
+exist in the target Git repository; `trusted_ref` must exist in the separate
+external memory/policy Git repository. There is no cross-repository ancestry test.
+The roots must be independent, as required by the production engine.
+IDs are unique safe identifiers. The dataset
 contains 1–1000 chronological events with at least one review.
+
+An optional `context_paths` array names additional canonical, portable repository
+files, for example `["src/shared.rs", "Cargo.toml"]`. They are read only at the
+event's already pinned base/head commits, within the production context budget,
+and frozen into task/run linkage. Absolute paths, traversal and mutable
+worktree context are rejected. Do not use this field to introduce answer files
+or later revisions. It is not an opt-in to today's reference packs.
 
 An optional feedback event has exactly:
 
@@ -39,16 +48,19 @@ metadata is counted, but its content is not collected, ingested or used for
 learning in this replay implementation.
 
 ```powershell
-python -I $Runner --root $Target replay --dataset .\dataset.json
+python -I $Runner --root $Target replay --dataset DATASET_PATH
 ```
 
 The command returns `replay_id`, `manifest_path`, `runs_root`, frozen `runs` and
 limitations. Evaluation tasks live under
-`.review\local\evaluation\REPLAY_ID\runs`, separate from production runs.
+the external storage root's `.review\local\evaluation\REPLAY_ID\runs`, separate
+from production runs. Store datasets, responses and labels under its `local_path`,
+not in the target checkout.
 
 ## Time and completion boundaries
 
-The engine rejects commit timestamps later than review availability and selects
+The engine reads code commit timestamps from the target and policy timestamps
+from external memory. It rejects timestamps later than review availability and selects
 only signed policy eligible at the cutoff. Source version availability, approval
 request/recording time, effective dates and expiry all matter. Do not backdate
 new approvals to manufacture a historical policy.
@@ -68,7 +80,8 @@ stubbed signatures demonstrate cutoff logic, not historical provenance.
 
 Static-only review tasks may finish during preparation. Host tasks with
 `requires_response: true` require actual host reasoning and validated completion,
-following the [review response contract](review.md). Do not copy an evaluation
+following the [repository-first review response contract](review.md), including
+repository assessments and BASE comparisons for consistency findings. Do not copy an evaluation
 task into production state to complete it. Preserve its original isolated run
 directory and immutable manifest linkage.
 
@@ -85,7 +98,7 @@ There is no user-facing `--runs-root` flag. Complete every required host task,
 then score the **same** replay ID with separate human labels:
 
 ```powershell
-python -I $Runner --root $Target score --replay-id REPLAY_ID --labels .\labels.json
+python -I $Runner --root $Target score --replay-id REPLAY_ID --labels LABELS_PATH
 ```
 
 Scoring rejects unfinished runs, altered task/request linkage, mismatched
@@ -123,7 +136,7 @@ The human identity and independence fields are attestations, not cryptographic
 verification of the adjudicator.
 
 ```powershell
-python -I $Runner --root $Target score --replay-id REPLAY_ID --labels .\labels.json
+python -I $Runner --root $Target score --replay-id REPLAY_ID --labels LABELS_PATH
 ```
 
 Scoring retains separate score artifacts for different label/report inputs.

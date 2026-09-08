@@ -1,4 +1,3 @@
-import tempfile
 import subprocess
 import contextlib
 import io
@@ -7,20 +6,21 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from tests.test_core import knowledge
-from review_memory.collect import FIXTURE_SCHEMA, LEGACY_FIXTURE_SCHEMA, _GitHub, _Store, _Unavailable, bootstrap, harvest
-from review_memory.common import Error, load_json, load_yaml, write_json, write_yaml
+from tests.test_core import file_tree, fixture_directory, git_command, initialize_git, knowledge
+from review_memory.collect import FIXTURE_SCHEMA, _GitHub, _Store, _Unavailable, bootstrap, harvest
+from review_memory.common import Error, load_json, write_json, write_yaml
 from review_memory.core import approval_request, approve, initialize
 from review_memory.propose import propose
 from review_memory.review import finalize_review, prepare_review
 from review_memory.replay import prepare_replay, score_replay
 from review_memory.cli import main
+from review_memory.storage import initialize_project, project_storage
 
 
 class LearningWorkflowTests(unittest.TestCase):
     def test_missing_version_is_gap_but_rate_limit_is_failure(self):
-        with tempfile.TemporaryDirectory() as directory:
-            adapter = _GitHub("example/project", _Store(Path(directory), "example/project"))
+        with fixture_directory() as directory:
+            adapter = _GitHub("example/project", _Store(directory, "example/project"))
             missing = subprocess.CompletedProcess([], 1, "", "not found (HTTP 404)")
             with patch("review_memory.collect.subprocess.run", return_value=missing):
                 with self.assertRaises(_Unavailable):
@@ -33,10 +33,10 @@ class LearningWorkflowTests(unittest.TestCase):
             self.assertNotIn("secret-text", str(result.exception))
 
     def test_collection_to_proposal_and_tamper_detection(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+        with fixture_directory() as directory:
+            root = directory / "policy"
             initialize(root, "example/project")
-            fixture = root / "fixture.json"
+            fixture = root / ".review" / "local" / "fixture.json"
             write_json(fixture, {
                 "schema_version": FIXTURE_SCHEMA, "repository": "example/project",
                 "prs": [{
@@ -52,15 +52,12 @@ class LearningWorkflowTests(unittest.TestCase):
             })
             collection = bootstrap(root, "example/project", "2026-01-01", "2026-02-01", fixture=fixture)
             self.assertTrue(collection["complete"])
-            legacy_fixture = load_json(fixture)
-            legacy_fixture["schema_version"] = LEGACY_FIXTURE_SCHEMA
-            write_json(fixture, legacy_fixture)
             self.assertTrue(harvest(root, "example/project", 7, fixture=fixture)["complete"])
             task_path = root / collection["task_paths"][0]
             task = load_json(task_path)
             candidate = knowledge()
             candidate.update(maturity="candidate", sources=[], evidence_ids=[task["evidence"][0]["evidence_id"]])
-            response = root / "response.json"
+            response = root / ".review" / "local" / "response.json"
             write_json(response, {
                 "task_id": task["task_id"], "input_hash": task["input_hash"],
                 "model": {"provider": "host", "model": "synthetic-test", "prompt_version": "test-v1"},
@@ -84,10 +81,18 @@ class LearningWorkflowTests(unittest.TestCase):
 
 class SignedReviewWorkflowTests(unittest.TestCase):
     def test_signed_policy_and_detector_review_ignore_pr_policy_changes(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            initialize(root, "example/project")
-            key = root / "ephemeral-test-key"
+        with fixture_directory() as directory:
+            target = directory / "code"
+            initialize_git(target)
+            storage = project_storage(target, directory / "memory")
+            initialize_project(storage, "example/project")
+            root = storage.storage_root
+            local = root / ".review" / "local"
+            initialize_git(root)
+            git_command(root, "add", ".review")
+            git_command(root, "commit", "-qm", "Independent external policy store without approvals")
+            empty_policy = git_command(root, "rev-parse", "HEAD")
+            key = directory / "ephemeral-test-key"
             subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)],
                            check=True, capture_output=True)
             (root / ".review" / "allowed_signers").write_text(
@@ -103,7 +108,7 @@ class SignedReviewWorkflowTests(unittest.TestCase):
                 "valid_examples": ["No api dependency."], "violating_examples": ["Explicit api dependency."],
             }
             for kind, content in (("knowledge", item), ("detector", detector)):
-                content_path = root / f"{kind}.yaml"
+                content_path = local / f"{kind}.yaml"
                 write_yaml(content_path, content)
                 request = Path(approval_request(root, content_path, kind, "test-only", "Synthetic regression fixture only")["request"])
                 subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "review-memory-v1", str(request)],
@@ -111,38 +116,62 @@ class SignedReviewWorkflowTests(unittest.TestCase):
                 approve(root, request, Path(str(request) + ".sig"))
 
             def git(*args):
-                return subprocess.run(["git", "-C", str(root), *args], check=True,
-                                      capture_output=True).stdout.decode().strip()
+                return git_command(target, *args)
 
-            git("init", "-q")
-            git("config", "user.name", "Synthetic test")
-            git("config", "user.email", "test@example.invalid")
-            git("config", "commit.gpgsign", "false")
-            git("config", "core.hooksPath", str(root / "no-hooks"))
-            git("config", "core.autocrlf", "false")
-            (root / "Cargo.toml").write_text('[package]\nname="domain"\nversion="0.1.0"\n', encoding="utf-8")
-            git("add", ".review", "Cargo.toml")
-            git("commit", "-qm", "Synthetic approved baseline")
+            git_command(root, "add", ".review")
+            git_command(root, "commit", "-qm", "Synthetic signed external policy")
+            policy = git_command(root, "rev-parse", "HEAD")
+            self.assertEqual("", git_command(root, "ls-files", ".review/project.json", ".review/local"))
+            (target / "Cargo.toml").write_text('[package]\nname="domain"\nversion="0.1.0"\n', encoding="utf-8")
+            (target / ".gitignore").write_text("preserve-target-ignore\n", encoding="utf-8")
+            (target / ".review").mkdir()
+            (target / ".review" / ".gitignore").write_text("preserve-legacy-ignore\n", encoding="utf-8")
+            write_yaml(target / ".review" / "knowledge" / "K-example-r1.yaml", item)
+            git("add", "--all")
+            git("commit", "-qm", "Synthetic code baseline with unused target policy")
             base = git("rev-parse", "HEAD")
-            (root / "Cargo.toml").write_text(
+            (target / "Cargo.toml").write_text(
                 '[package]\nname="domain"\nversion="0.1.0"\n[dependencies]\napi="1"\n', encoding="utf-8")
-            policy_file = root / ".review" / "knowledge" / "K-example-r1.yaml"
-            tampered = load_yaml(policy_file)
+            policy_file = target / ".review" / "knowledge" / "K-example-r1.yaml"
+            tampered = dict(item)
             tampered["principle"] = "PR tries to relax its own policy."
             write_yaml(policy_file, tampered)
-            git("add", ".review", "Cargo.toml")
+            write_yaml(target / ".review" / "knowledge" / "K-target-only-r1.yaml",
+                       dict(item, id="K-target-only", execution="llm"))
+            write_yaml(target / ".review" / "config.yaml",
+                       {"repository": "untrusted/target", "execute_project_commands": True, "publish": True})
+            (target / ".review" / "allowed_signers").write_text("Untrusted PR-supplied signers\n", encoding="utf-8")
+            (target / ".review" / "keys").mkdir()
+            (target / ".review" / "keys" / "maintainer.pub").write_text("Untrusted PR key\n", encoding="utf-8")
+            git("add", "--all")
             git("commit", "-qm", "Synthetic untrusted change")
             head = git("rev-parse", "HEAD")
-            prepared = prepare_review(root, "example/project", base, head, base,
+            (target / "Cargo.toml").write_text("uncommitted target content must not be inspected\n", encoding="utf-8")
+            before = file_tree(target)
+            policy_refs = git_command(root, "show-ref")
+            (root / ".review" / "allowed_signers").write_text("Untrusted mutable worktree signers\n", encoding="utf-8")
+            write_yaml(root / ".review" / "knowledge" / "K-example-r1.yaml", tampered)
+            with self.assertRaisesRegex(Error, "policy commit is unavailable"):
+                prepare_review(target, "example/project", base, head, head, memory_root=root)
+            unapproved = prepare_review(target, "example/project", base, head, empty_policy, memory_root=root)
+            self.assertEqual([], unapproved["task"]["knowledge"])
+            self.assertEqual(0, unapproved["report"]["total_findings"])
+            self.assertTrue(any("No eligible approved knowledge" in gap
+                                for gap in unapproved["report"]["coverage_gaps"]))
+            prepared = prepare_review(target, "example/project", base, head, policy, memory_root=root,
                                       reference_query="Rust ownership", reference_limit=1)
             self.assertEqual(1, prepared["report"]["total_findings"])
             self.assertEqual(1, len(prepared["task"]["reference_packs"]))
             self.assertEqual(item["principle"], prepared["task"]["knowledge"][0]["principle"])
+            self.assertEqual([item["id"]], [rule["id"] for rule in prepared["task"]["knowledge"]])
+            self.assertEqual(policy, prepared["task"]["trusted_sha"])
+            self.assertEqual("external_memory", prepared["task"]["policy_source"])
             self.assertEqual("D-example", prepared["report"]["findings"][0]["detector_id"])
-            response_path = root / "response.json"
+            response_path = local / "response.json"
             write_json(response_path, {
-                "schema_version": 1, "task_id": prepared["task_id"], "input_hash": prepared["input_hash"],
+                "schema_version": 2, "task_id": prepared["task_id"], "input_hash": prepared["input_hash"],
                 "model": {"provider": "host", "model": "synthetic-test", "prompt_version": "test-v1"},
+                "repository_assessments": [],
                 "assessments": [{"knowledge_id": item["id"], "revision": 1, "status": "checked",
                                  "rationale": "Synthetic semantic acknowledgement; no real model result."}],
                 "findings": [],
@@ -154,9 +183,10 @@ class SignedReviewWorkflowTests(unittest.TestCase):
             self.assertEqual(1, report["total_findings"])
             self.assertFalse(report["awaiting_response"])
             self.assertTrue((Path(prepared["report_path"]).parent / "completion.json").exists())
+            self.assertEqual(before, file_tree(target))
             now = datetime.now(timezone.utc)
             stamp = lambda delta: (now + timedelta(days=delta)).isoformat()
-            dataset = root / "dataset.json"
+            dataset = local / "dataset.json"
             write_json(dataset, {
                 "schema_version": 1, "timeline": "simulated",
                 "windows": {
@@ -165,22 +195,25 @@ class SignedReviewWorkflowTests(unittest.TestCase):
                     "test": {"start": stamp(-1), "end": stamp(1)},
                 },
                 "events": [{"id": "synthetic-case", "type": "review", "available_at": stamp(0),
-                            "repository": "example/project", "base": base, "head": head, "trusted_ref": base}],
+                            "repository": "example/project", "base": base, "head": head, "trusted_ref": policy}],
             })
-            replay = prepare_replay(root, dataset)
+            replay = prepare_replay(target, dataset, memory_root=root)
             replay_run = replay["runs"][0]["run_id"]
             replay_directory = Path(replay["runs_root"]) / replay_run
             replay_task = load_json(replay_directory / "task.json")
             self.assertEqual([], replay_task["reference_packs"])
+            self.assertEqual(policy, replay_task["trusted_sha"])
+            self.assertEqual("external_memory", replay_task["policy_source"])
             response = load_json(response_path)
             response.update(task_id=replay_task["task_id"], input_hash=replay_task["input_hash"])
             write_json(response_path, response)
             with contextlib.redirect_stdout(io.StringIO()):
-                exit_code = main(["--root", str(root), "finalize", "--replay-id", replay["replay_id"],
+                exit_code = main(["--root", str(target), "--data-home", str(storage.data_home),
+                                  "finalize", "--replay-id", replay["replay_id"],
                                   "--run-id", replay_run, "--response", str(response_path)])
             self.assertEqual(exit_code, 2)  # Semantic context remains explicitly incomplete.
             replay_report = load_json(replay_directory / "report.json")
-            labels_path = root / "labels.json"
+            labels_path = local / "labels.json"
             write_json(labels_path, {
                 "schema_version": 1, "replay_id": replay["replay_id"],
                 "adjudicator": {"identity": "synthetic-human-attestation", "kind": "human", "independent": True},
@@ -196,6 +229,8 @@ class SignedReviewWorkflowTests(unittest.TestCase):
             self.assertEqual(1, score["by_split"]["test"]["matched_problem_instances"])
             self.assertEqual(score, score_replay(root, replay["replay_id"], labels_path))
             self.assertEqual(report, load_json(Path(prepared["report_path"])))
+            self.assertEqual(policy_refs, git_command(root, "show-ref"))
+            self.assertEqual(before, file_tree(target))
 
 
 if __name__ == "__main__":

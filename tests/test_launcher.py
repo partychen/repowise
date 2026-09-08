@@ -331,6 +331,7 @@ class InstalledLauncherTests(unittest.TestCase):
         (cls.target / "review_memory" / "__init__.py").write_text(
             'raise RuntimeError("Untrusted project package executed")')
         cls.env = dict(os.environ, REVIEW_MEMORY_CACHE=str(cls.cache),
+                       REVIEW_MEMORY_HOME=str(cls.directory / "project memory"),
                        PYTHONPATH=str(cls.target), PYTHONHOME=str(cls.target))
         # A fresh cache and unreachable proxies exercise real setup without PyPI or pip-cache access.
         for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",

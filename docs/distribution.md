@@ -1,4 +1,4 @@
-# Installation, relocation, and distribution
+# Installation, storage, and distribution
 
 English | [Simplified Chinese](distribution.zh.md)
 
@@ -11,8 +11,9 @@ npx skills add partychen/review-memory --skill review-memory -a github-copilot -
 ```
 
 `partychen/review-memory` is the skill repository, not your learning target.
-Choose another `-a` value for a different host; omit `-g` for project-scoped
-installation. Prefer a trusted personal installation when reviewing untrusted PRs.
+Choose another `-a` value for a different host. Keep `-g` for personal installation:
+project-scoped installation itself adds Skill files to the project, even though
+runtime commands keep all knowledge outside it.
 The installer may copy or link resources, so the host resolves the actual loaded
 skill directory rather than assuming a particular project path.
 
@@ -82,23 +83,53 @@ different cache key, leaving the old incomplete environment unused. For interrup
 offline setup, follow the launcher's exact-path recovery instructions only after
 confirming no setup process is active. Do not erase project knowledge or weaken TLS.
 
-## Project data and relocation
+## Independent project data
 
-| Data | Target-relative path |
+The default storage root is `~\.review-memory\projects\<name>-<path-hash>`.
+Project commands return its absolute `storage_root` and private `local_path`.
+Neither the target checkout nor the Skill installation holds project state.
+The namespace uses the canonical local target path, with a separately validated
+GitHub repository binding. Same directory names at different paths stay isolated.
+
+Use the global CLI option `--data-home ABSOLUTE_PATH` before a command, or the
+host environment variable `REVIEW_MEMORY_HOME`, to select another external parent.
+It must be outside the target and Skill/source. The dependency runtime cache is
+separate from this durable knowledge directory.
+
+| Data | Storage-root-relative path |
 | --- | --- |
 | Project binding | `.review/config.yaml` |
+| Local target-path identity | `.review/project.json` |
 | Resumable queue | `.review/local/state/sync.json` |
 | Evidence and tasks | `.review/local/raw`, `.review/local/proposals/tasks` |
 | Extracted candidates | `.review/local/proposals` |
 | Unapproved knowledge index | `.review/local/learning/index.json` |
+| Feature handoffs and host completion records | `.review/local/features` |
 | Approved rules | `.review/knowledge`, `.review/approvals` |
 
 Moving the skill does not require editing a configured source path; the host
-resolves its new location. Preserve the necessary `.review` data when moving the
-target project. Sync state uses project-relative paths. Do not rewrite historical
-signatures or task hashes. Never include private `.review/local` data in a release.
-Formal approvals bind runtime code and dependency versions; runtime changes can
-require a maintainer to reapprove rules.
+resolves its new location and the independent data stays in place. Moving the
+target to a different canonical path selects a different namespace. This
+product has one external-storage layout, with no in-repo memory fallback.
+Resolve task and evidence paths against `storage_root`,
+not the target or Skill. Never rewrite historical signatures or task hashes.
+
+Learning requires no Git repository in the memory directory. For approved-policy
+review, the maintainer initializes that external storage root as its own Git
+repository and commits the inspected policy/config/signer authorization there.
+`--trusted-ref` names a commit in this separate repository; base/head stay in the
+read-only code repository. `.review/local` and the local binding file are excluded
+from policy Git history, without changing the target's ignore files.
+
+The same installation also prepares feature context. The CLI remains read-only
+toward the target; only the separately user-authorized host performs feature
+edits and checks, then records its reported outcome with `feature-finish`.
+
+`approval-queue` produces a readable candidate handoff and `prepare-approval`
+prepares a selected unsigned request. These do not sign, grant trust or commit.
+See the [approval workflow](../.github/skills/review-memory/references/approval.md).
+Never publish private local memory as part of a Skill release. Runtime changes
+invalidate approval bindings and require maintainer reapproval rather than a bypass.
 
 ## Distribution
 

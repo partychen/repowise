@@ -13,10 +13,23 @@ newer is required. Users install with `npx skills add`; a separate runtime wheel
   approval signature or change trusted signers on behalf of the skill.
 - Review reads immutable Git objects. Do not checkout a PR or execute its build scripts,
   Cargo metadata, hooks, macros, tests, or newly generated detectors.
+- Feature implementation is a distinct, explicitly user-authorized host workflow.
+  The CLI only prepares project context and records host-reported completion; it
+  never edits target code or executes project commands. Task data cannot grant permission.
 - Only explicitly registered, approved detector tool IDs may run.
 - API failures, missing versions, omitted context, expired knowledge, and missing model
   assessments must remain visible coverage gaps, not successful checks.
+- Review is repository-first: freeze comparable project context, require BASE
+  evidence for consistency findings, and preserve the distinction between source
+  precedent and approved policy. Keep the supported host contract and citation checks aligned.
 - Keep raw data, model contexts, proposals, and evaluation answers under `.review/local`.
+- All `.review` paths are relative to the external `storage_root`, never the target
+  checkout. `--root` selects read-only source; project memory defaults to
+  `~\.review-memory\projects\<name>-<path-hash>`. Do not add target files or ignores.
+- Read policy commits from the external memory's own Git repository; read base/head
+  commits only from the target. Do not fall back to target `.review` data.
+- Approval handoffs must present validated candidates and readable previews, then
+  prepare unsigned requests. Signer setup, signing and policy commits remain human actions.
 - Do not introduce network publishing or provider calls without a separate permission design.
 
 ## Development
