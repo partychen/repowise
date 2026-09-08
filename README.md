@@ -4,325 +4,287 @@ English | [Simplified Chinese](README.zh.md)
 
 > Your team's experience. Your agent's next change.
 
-**RepoWise** is a Copilot skill with one shared project memory supporting three workflows: **accumulate
-engineering knowledge, review PRs, and implement features in the project's
-existing architecture and conventions**. Memory is the shared foundation,
-not an end in itself.
+**RepoWise** gives GitHub Copilot, Claude Code and Codex persistent,
+evidence-backed project knowledge. It learns from PR reviews, applies approved
+lessons to new reviews, and guides feature implementation within the repository's
+architecture and conventions.
 
-The repository, Skill and CLI are all named `repowise`.
+[Installation](#installation) | [Workflows](#workflows) | [Review roles](#review-roles) |
+[Project memory](#project-memory) | [Trust model](#trust-model) | [Documentation](#documentation)
 
-Project knowledge **grows like a snowball**: learn from merged PRs, preserve useful
-lessons, apply approved revisions in later reviews, and refine them as new
-human feedback arrives. This is a design goal, not a measured productivity claim.
+## Capabilities
 
-**PR experience -> project memory -> knowledge-informed reviews -> new PR experience.**
-
-[How it works](#how-it-works) | [Install](#install) | [First use](#first-use-select-your-project)
-
-| Workflow | What the user receives | Execution boundary |
-| --- | --- | --- |
-| Accumulate knowledge | Resumable learning inbox, evidence-backed lessons, revisions and approval handoffs | Authenticated reads and external local storage |
-| Review PRs | Project-aware findings, verified code comparisons and visible coverage gaps | Immutable code/policy reads; no target execution or publishing |
-| Implement features | Actual host-authored changes, authorized checks and a recorded completion | User-authorized host coding tools; the CLI supplies context and records, not permission |
-
-## Design philosophy
-
-A PR review often explains more than a code change: why an interface has a certain
-contract, which tradeoff matters to the team, or when an apparent anti-pattern is
-actually valid. That reasoning should remain useful after the PR closes, rather
-than having to be rediscovered in every review or chat session.
-
-The unit of evolution is **the project's knowledge, not the model's weights**.
-Each learning round compares new evidence with saved lessons. It can add support
-for an existing principle, expose a counterexample, or motivate a revision or
-retirement. The goal is not an ever-growing blacklist, but increasingly precise
-knowledge of this project's decisions and their limits.
-
-A useful lesson records its principle, applicable paths and context, exceptions,
-valid and violating examples, and versioned evidence links. Repeated comments,
-resolved threads, and merged PRs are evidence to interpret, not automatic team
-consensus or permission to enforce a rule.
-
-**Illustrative evolution, not actual repository evidence:** one PR motivates
-preserving diagnostic context at request boundaries. Another reveals that
-sensitive request values must be excluded. A later refactor centralizes context
-handling, motivating a narrower rule. The memory should retain these observations
-and support revised proposals, not turn the first comment into "log everything."
-
-### Repository-first review
-
-The reviewer must examine the project's architecture, existing frameworks and
-helpers, contracts, security boundaries, error/resource conventions, concurrency/performance paths,
-tests/observability, local idioms and change scope before recommending changes.
-Generic best practices and personal syntax preferences are not repository policy.
-Prefer a small repair fitting existing mechanisms; explain when a new mechanism
-is actually necessary, and consider intentional migrations and valid exceptions.
-
-This is enforced through task preparation and response validation, not only a
-prose instruction. Bounded base/head project context is frozen with the task.
-Host responses separately assess the required repository dimensions. A consistency
-finding requires a verified BASE comparison as well as an approved rule and
-current code evidence; an example newly added by the PR cannot establish an old
-convention. Direct behavior defects need not invent a precedent. Omitted
-assessments and missing context remain visible gaps. Citation validation proves
-source identity, not the correctness of the model's conclusion.
-See the [review contract](.github/skills/repowise/references/review.md).
-
-### One coordinator, relevant review roles
-
-Small PRs stay with the main reviewer. Larger or risky changes can use specialist
-subagents for **architecture, logic/contracts, security, reliability,
-concurrency/performance, and tests/observability**. Roles are selected as needed,
-not always all six; the host runs them against the same frozen project context.
-
-The coordinator reviews their evidence, resolves conflicts and groups findings
-with the same root cause while preserving the original findings, rules and
-provenance. Distinct defects on the same line remain separate. Unavailable or
-failed roles remain coverage gaps, and fixed-detector findings cannot be hidden.
-See [host coordination](.github/skills/repowise/references/review-agents.md).
-
-### What runs where
-
-This is **one skill**, with responsibilities deliberately separated:
-
-| Part | Responsibility |
+| Workflow | Result |
 | --- | --- |
-| Skill instructions and workflow references | Guide the assistant through collection, learning, approval, and review. |
-| Host assistant, such as Copilot | Read evidence, relate new observations to existing knowledge, propose lessons, and reason about current changes. |
-| Bundled Python CLI | Collect through authenticated `gh` reads, preserve progress, validate evidence/signatures, prepare PR and feature context, run eligible fixed review detectors, and record local artifacts. It never edits target code, runs project commands or calls a model API. |
-| External per-project memory directory | Keep knowledge, approvals and reports across sessions without adding files to the target or the installed skill. |
-| Rust reference packs | Supply review questions and counterexamples, not repository policy or independently triggered skills. |
+| Learn from PRs | Resumable collection, scoped lessons, supporting evidence and revision history |
+| Review changes | Repository-aware findings, verified source citations and explicit coverage gaps |
+| Implement features | Agent-authored changes, authorized checks and recorded completion |
 
-## How it works
+Knowledge evolves through new PR evidence: a later review can reinforce a lesson,
+reveal an exception or motivate a revision. The evolving asset is the project's
+knowledge, not the model's weights. Each lesson retains its scope, counterexamples
+and provenance; only maintainer-approved revisions become review policy.
 
-```mermaid
-flowchart LR
-    PR["Merged PRs and review feedback"] --> Learn["Sync evidence and host learning"]
-    Memory["Saved knowledge candidates"] --> Learn
-    Learn --> Memory
-    Memory -->|Maintainer signs and commits| Policy["Trusted approved policy"]
-    Policy --> Review["Review later changes and produce a local report"]
-    Code["Pinned project architecture, frameworks and idioms"] -->|Evidence, not policy| Review
-    Policy --> Feature["Authorized host feature implementation"]
-    Code -->|Project context| Feature
-    Feature --> NewPR["User's code changes and separately requested PR"]
-    NewPR -.->|Human feedback and merge, then learn again| PR
-    Review -.->|Human feedback and merge, then sync again| PR
-```
+## Requirements
 
-1. **Collect evidence.** `sync` reads merged PR reviews and discussions in bounded,
-   resumable batches. It preserves evidence versions and available code context;
-   missing source or failed API reads remain visible gaps.
-2. **Relate, learn, and save.** The host reads both new evidence and the existing
-   knowledge index, considers support and counterexamples, and proposes scoped
-   lessons or revisions. `propose` validates and saves the result; `status` rebuilds
-   the cumulative index. Exact matching lessons are grouped with their evidence;
-   semantic merging requires host reasoning. A PR need not yield a new lesson.
-3. **Approve deliberately.** Learning does not require approval. To use a lesson
-   as review policy, a maintainer inspects and SSH-signs an exact revision through
-   the [approval workflow](.github/skills/repowise/references/approval.md).
-   Verified knowledge and approval records must then be committed to the
-   external memory's own trusted Git history, not the target branch.
-   Static detectors need separate approval;
-   the assistant never signs or grants itself authority.
-4. **Reuse in a later review.** `review` pins base/head commits and a
-   maintainer-selected trusted policy commit from the external memory repository. It uses
-   eligible approved rules, runs separately approved fixed detectors where
-   applicable, and prepares a repository-first host reasoning task with bounded
-   comparable project code. `finalize` validates host output, including BASE
-   comparison citations, and writes a local report with evidence and coverage gaps.
-   Static-only runs can finish during preparation; manual rules still need humans.
-5. **Implement a feature.** `feature` prepares the same project's approved
-   knowledge and relevant baseline examples. After explicit user authorization,
-   the host implements the actual change, preserves unrelated work, and performs
-   the relevant authorized checks. `feature-finish` records actual host results,
-   unknowns and blockers; a prepared brief is not a completed feature.
-6. **Feed the next round.** People continue reviewing, discussing, and merging PRs.
-   A later `sync` collects new or changed merged PR evidence and repeats the
-   comparison with saved knowledge. New evidence can motivate further revisions;
-   changing or retiring approved policy requires a new signed revision. A local
-   model finding is not automatically ingested as accepted historical feedback.
+| Requirement | Purpose |
+| --- | --- |
+| GitHub Copilot CLI, Claude Code or Codex CLI | Run the skill and perform reasoning |
+| Node.js with `npx` | Install the skill |
+| Python 3.11+ with `venv` and `ensurepip` | Run the bundled CLI |
+| Git | Read immutable source and policy commits |
+| Authenticated GitHub CLI (`gh`) | Collect PR metadata, reviews and discussions |
+| OpenSSH with SSH signature support | Sign and verify policy approvals |
 
-The snowball is **persistent and invocation-driven, not an autonomous daemon**.
-Installation starts no scheduler or webhook. Incremental PR metadata may miss
-feedback edits; a full refresh after the pending queue finishes re-reads them.
-Collection complete, learning complete, and policy approved are different states.
-
-The current pilot does not automatically post PR comments, commit, push or decide
-merges. The CLI never edits target code; feature edits belong to the separately
-authorized host workflow. Review uses the trusted installed runtime and immutable
-Git objects; it does not check out PR code or run target builds, tests, or hooks.
-Its only fixed detector is `rust.forbidden-dependency.v1`, which inspects Cargo
-dependency declarations rather than running Cargo. Missing evidence, expired
-knowledge, and omitted model assessments remain gaps: "no findings" is not proof
-of correctness. See [pilot scope and limitations](docs/pilot.md).
-
-## Install
-
-```powershell
-npx skills add partychen/repowise --skill repowise -a github-copilot -g
-```
-
-Requires Node.js/npx and Python 3.11+ with `venv` and `ensurepip`. For GitHub
-synchronization, install GitHub CLI and sign in if you have not already:
+Authenticate GitHub CLI before accessing your repositories:
 
 ```powershell
 gh auth login
 ```
 
-On first use, the assistant creates an isolated Python environment and installs
-the bundled, hash-pinned pure-Python PyYAML wheel. **Dependency setup is offline:
-it does not contact PyPI or require a compiler.** You do not need a separate Python
-backend or model API key. Downloading the skill and syncing GitHub still require
-their respective network access.
+On first use, the agent prepares an isolated Python environment from the bundled,
+hash-pinned PyYAML wheel. Dependency setup is offline; no separate runtime
+installation or model API key is required. See [setup](.github/skills/repowise/references/setup.md)
+for environment and Git requirements.
 
-Keep `-g` for a personal installation if you want no Skill files in the target
-either. Runtime commands never create a target `.review` or change its ignore files.
+## Installation
 
-## Invoke the skill
+Choose your agent below. Run the terminal commands from your local project
+directory, then enter the skill request in the agent's conversation.
+`-g` installs the skill for your user account across projects.
 
-**Open your target project and enter the following in your assistant's chat,
-not in PowerShell:**
+### GitHub Copilot CLI
 
-```text
-Use repowise to sync this project's PR reviews and build its review knowledge.
+**Terminal**
+
+```powershell
+npx skills add partychen/repowise --skill repowise -a github-copilot -g
+copilot
 ```
 
-In Copilot CLI, you can explicitly select the skill with `/repowise`:
+**Skill request**
 
 ```text
-Use /repowise to sync this project's PR reviews and build its review knowledge.
+Use /repowise to sync this project's PR reviews and build project knowledge.
 ```
 
-Requests such as "sync PR reviews", "learn from past reviews", and "accumulate team
-review knowledge" help the assistant select the skill automatically. **Include
-`repowise` by name for the most explicit invocation.**
+[GitHub Copilot skill reference](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills)
 
-If Copilot CLI was already running when you installed the skill, run these inside
-the CLI session:
+### Claude Code
 
-```text
-/skills reload
-/skills info repowise
+**Terminal**
+
+```powershell
+npx skills add partychen/repowise --skill repowise -a claude-code -g
+claude
 ```
 
-For other hosts, select the corresponding agent during installation and reopen
-the session if the new skill has not been discovered.
-
-## First use: select your project
-
-Enter this in your target project's session, replacing the repository URL:
+**Skill request**
 
 ```text
-Use repowise.
-My project is https://github.com/acme/my-project.
+/repowise Sync this project's PR reviews and build project knowledge.
+```
+
+[Claude Code skill reference](https://code.claude.com/docs/en/skills)
+
+### Codex CLI
+
+**Terminal**
+
+```powershell
+npx skills add partychen/repowise --skill repowise -a codex -g
+codex
+```
+
+**Skill request**
+
+```text
+$repowise Sync this project's PR reviews and build project knowledge.
+```
+
+[Codex skill reference](https://developers.openai.com/codex/skills/)
+
+## Workflows
+
+The following requests work in each agent's conversation. Use your agent's
+skill invocation above or include `repowise` by name.
+
+### 1. Connect a project and learn
+
+Identify the GitHub repository and its existing local checkout:
+
+```text
+Use repowise for https://github.com/acme/my-project.
 Use the current workspace as its local directory.
-Sync merged PR reviews, extract useful lessons, and save them as project knowledge.
+Sync merged PR reviews, extract useful lessons and save them as project knowledge.
 ```
 
-`acme/my-project` is **the project you want to learn from**, not this skill's
-installation repository. The assistant asks for missing project details rather
-than silently choosing a repository or storage directory.
+Replace `acme/my-project` with your target repository. The agent binds the project,
+collects review evidence, compares it with existing lessons and saves validated
+knowledge proposals. The result includes accumulated knowledge and remaining work.
 
-This starts the collection and learning stages above: the assistant saves the
-project binding, prepares its runtime, processes evidence, and reports accumulated
-knowledge and remaining work. It does not approve the resulting candidates.
-
-The default batch size is 20 PRs. Large histories or session limits leave a saved
-queue that a later invocation can resume. To limit the initial history:
+The default scope is merged PR history, processed in batches of 20. Progress
+persists between sessions. To select an initial time range:
 
 ```text
-Use repowise to learn from acme/my-project's PRs merged since 2026-01-01.
-Use the current workspace as the local directory.
+Use repowise to learn from this project's PRs merged since 2026-01-01.
 ```
 
-Selected `harvest` and `bootstrap` tasks share the same learning inbox and
-knowledge index as `sync`; they do not require a full-history scan to become
-visible. Knowledge lineage links revisions and their evidence while keeping
-unequal alternatives separate and unapproved.
-
-## Common requests
-
-| Goal | What to say in the assistant's chat |
+| Task | Request |
 | --- | --- |
-| Continue syncing and learning | Use repowise to continue syncing this project and finish pending knowledge extraction. |
-| Check progress | Use repowise to show the remaining PRs and learning tasks for this project. |
-| Browse accumulated knowledge | Use repowise to summarize this project's knowledge and link to the supporting PRs. |
-| Recheck historical feedback | Use repowise to finish the pending queue, then fully refresh historical PR feedback. |
-| Learn from one PR | Use repowise to learn from acme/my-project PR #123 and save the review lessons. |
-| Start knowledge approval | Use repowise to show the pending candidates with evidence and prepare the ones I select for maintainer signing. |
-| Focus a delegated review | Use repowise to review PR #123 with architecture, security and reliability roles, then reconcile their findings. |
-| Review changes | Use repowise to review these changes using this project's approved rules. |
-| Review a GitHub PR | Use repowise to review https://github.com/acme/my-project/pull/123 using the selected project policy. |
-| Implement a feature | Use repowise to implement this feature using the project's existing architecture and approved knowledge; preserve my existing changes and obtain authorization for the needed checks. |
+| Resume learning | Use repowise to continue syncing this project and finish pending learning tasks. |
+| Inspect progress | Use repowise to show the remaining PRs and learning tasks. |
+| Browse knowledge | Use repowise to summarize project knowledge with links to supporting PRs. |
+| Learn one PR | Use repowise to learn from PR #123 and save its review lessons. |
+| Refresh feedback | Use repowise to finish the pending queue, then fully refresh historical PR feedback. |
 
-For PRs, the host can use `review --pr NUMBER_OR_URL`; the CLI resolves the
-local immutable revisions without checkout or fetch. For features, the host
-uses `feature` to prepare context, then actually implements and verifies within
-the user's authorization, and records the outcome with `feature-finish`.
-Neither a context packet nor a written plan is a completed implementation.
-See the [feature workflow](.github/skills/repowise/references/feature.md).
+Learning runs on request; installation starts no scheduler or webhook.
+Collection, learning and policy approval have separate completion states.
 
-## Where do I approve knowledge?
+### 2. Approve project knowledge
 
-Ask the assistant to show the **approval queue**. It presents a readable preview
-with the candidate's principle, source evidence, scope, exceptions and missing
-requirements, rather than only pointing to an index JSON file. You select what to
-review; the assistant prepares an exact unsigned request with your chosen owner,
-signing identity and reason. Missing examples or evidence are not filled in merely
-to make approval succeed.
+```text
+Use repowise to show pending knowledge candidates with their evidence,
+scope and exceptions. Prepare signing requests for the revisions I select.
+```
 
-Under the hood, `approval-queue` lists candidates and `prepare-approval` produces
-the review/signing handoff. The maintainer configures signer trust and signs
-outside the assistant; `approve` verifies and imports that signature. Approved
-records must enter the **external memory repository's** trusted Git history before
-policy review uses them. No target-repository commit is required.
-See the [guided approval workflow](.github/skills/repowise/references/approval.md).
-Approval never blocks continued PR learning.
+The agent presents readable previews and prepares unsigned approval requests.
+A maintainer configures trusted signers, signs the selected revisions and commits
+the verified records to the external memory's Git repository. That policy commit
+can then be selected for reviews.
 
-## Where knowledge is stored
+Learning does not require approval. Knowledge and detector approvals are separate;
+the agent does not sign or grant trust. See the
+[approval workflow](.github/skills/repowise/references/approval.md).
 
-Project state is outside both the target and the Skill installation:
+### 3. Review a pull request
+
+With approved knowledge available, provide the PR and a trusted policy commit:
+
+```text
+Use repowise to review https://github.com/acme/my-project/pull/123.
+Use POLICY_SHA from the project's external memory repository as the trusted policy commit.
+```
+
+Replace `POLICY_SHA` with the maintainer-selected commit. RepoWise resolves the
+PR's immutable BASE/HEAD from local Git objects, captures bounded project context
+and prepares the review. Code objects must already be available locally.
+
+Reviews assess architecture, existing frameworks and helpers, contracts, security,
+resource lifecycle, concurrency, tests, idioms and change scope. Consistency
+findings require exact BASE comparisons; behavior defects require concrete
+consequences and triggering conditions. All policy findings reference approved
+knowledge revisions.
+
+The result is a local report with findings, evidence, assessments and coverage
+gaps. Markdown groups related findings with expandable supporting evidence;
+JSON retains the underlying records and provenance.
+
+### 4. Implement a feature
+
+```text
+Use repowise to implement cursor-based pagination for the existing list endpoint.
+Follow the project's architecture and applicable approved knowledge.
+You may edit the relevant files and run the existing targeted checks.
+Preserve my existing changes. Do not commit or push.
+```
+
+The agent prepares project context, performs the authorized edits and checks,
+and records the actual result. Features can start without approved policy;
+missing policy coverage is recorded explicitly. Completion includes changed
+files, check outcomes and remaining work.
+
+## Review roles
+
+One coordinator owns final coverage and reconciliation. Specialist roles provide
+focused analysis against the same frozen code, project context and approved knowledge.
+
+| Role | Focus |
+| --- | --- |
+| Architecture | Module boundaries, dependency direction, existing mechanisms and local idioms |
+| Logic and contracts | Business invariants, types, caller behavior, compatibility and migration scope |
+| Security | Authentication, authorization, untrusted input, sensitive data and isolation |
+| Reliability | Error propagation, cancellation, retries, partial failure and resource cleanup |
+| Concurrency and performance | Races, blocking, contention, backpressure and resource bounds |
+| Tests and observability | Regression scenarios, meaningful assertions and diagnostic signals |
+
+Automatic planning keeps small changes with the coordinator and selects relevant
+roles for larger changes. Explicit role selection supports focused reviews:
+
+```text
+Use repowise to review PR #123 with architecture, security and reliability roles.
+Run at most two workers concurrently, then reconcile their findings.
+```
+
+The default concurrency limit is three workers. Execution uses the host agent's
+available subagent tools; single-agent and serial execution are recorded separately.
+Missing or failed roles remain coverage gaps.
+
+The coordinator validates reasoning, resolves disagreements and groups findings
+by root cause. Original evidence and rejection reasons remain auditable. Distinct
+defects at the same location remain separate, and static results cannot be suppressed.
+See [review coordination](.github/skills/repowise/references/review-agents.md)
+for routing, CLI options and response contracts.
+
+## Project memory
+
+Each local checkout has an external memory directory:
 
 ```text
 ~\.repowise\projects\<project-name>-<path-hash>\.review\
 ```
 
-The canonical local path determines the namespace; the readable name is only a
-label, and the saved GitHub repository binding is checked separately. Same-named
-checkouts do not accidentally share knowledge. `doctor`, `sync` and `status`
-return the exact `storage_root` and `local_path`; relative artifact paths are
-relative to `storage_root`, **not the target checkout**.
+The canonical checkout path determines its namespace; the GitHub repository
+binding is validated separately. Commands return the exact `storage_root` and
+`local_path`. Artifact paths are relative to `storage_root`.
 
-The following paths are inside that external `storage_root`:
-
-| Path | Contents |
+| Storage-root-relative path | Contents |
 | --- | --- |
-| `.review/config.yaml` | Project binding |
-| `.review/project.json` | Local target-path binding, excluded from policy Git history |
-| `.review/local/state/sync.json` | Sync progress and queued PRs |
-| `.review/local/raw/evidence` | Versioned PR evidence and availability metadata |
-| `.review/local/proposals` | Learning tasks, host responses, candidates, and evidence associations |
-| `.review/local/learning/index.json` | Accumulated **unapproved** knowledge index, reused in later learning |
-| `.review/knowledge`, `.review/approvals` | Versioned knowledge and signed approval records for trusted policy |
-| `.review/detectors` | Separately approved fixed-detector configurations |
-| `.review/local/runs` | Local review tasks, findings, reports, and coverage gaps |
-| `.review/local/features` | Feature context, host implementation/check reports, and completion records |
+| `.review/config.yaml`, `.review/project.json` | Project configuration and local checkout binding |
+| `.review/local/state/sync.json` | Collection progress and queued PRs |
+| `.review/local/raw/evidence` | Versioned review evidence |
+| `.review/local/proposals`, `.review/local/learning/index.json` | Candidates, responses, lineage and unapproved knowledge |
+| `.review/knowledge`, `.review/approvals`, `.review/detectors` | Knowledge revisions, signatures and detector approvals |
+| `.review/local/runs` | Review tasks, worker records and reports |
+| `.review/local/features` | Feature context and completion records |
+| `.review/local/evaluation` | Replay tasks and independent adjudication |
 
-Updating or reinstalling the Skill leaves this independent data directory in
-place. `--data-home` or `REPOWISE_HOME` can select another absolute external
-parent directory. The CLI leaves the target and its `.gitignore` unchanged;
-authorized feature edits are performed by the host, not the CLI.
-`.review/local` is ignored only inside the external policy repository.
-There is one external-storage layout, with no target-local memory fallback.
+Set `REPOWISE_HOME` or the CLI's `--data-home` option to select another external
+parent directory. Updating the skill preserves project memory. The CLI creates
+no memory files or ignore rules in the target checkout.
 
-## Further reading
+## Trust model
 
-- [Installation, storage, and distribution](docs/distribution.md)
-- [Synchronization workflow](.github/skills/repowise/references/sync.md)
-- [Learning from history](.github/skills/repowise/references/learning.md)
-- [Knowledge structure and lifecycle](.github/skills/repowise/references/knowledge.md)
-- [Knowledge approval](.github/skills/repowise/references/approval.md)
-- [Code review](.github/skills/repowise/references/review.md)
-- [Feature implementation](.github/skills/repowise/references/feature.md)
-- [Temporal replay and independent evaluation](.github/skills/repowise/references/replay.md)
+| Component | Responsibility |
+| --- | --- |
+| Host agent | Reason about evidence, coordinate reviews and perform authorized feature work |
+| Bundled CLI | Collect data, freeze context, validate signatures and responses, run approved fixed detectors and save artifacts |
+| Maintainer | Select trusted policy, manage signer identities and approve knowledge/tool revisions |
+| Reference packs | Supply Rust review questions and counterexamples, not repository policy |
+
+Learning and review read immutable Git objects without executing target builds,
+tests, hooks or generated detectors. Feature edits and checks require user
+authorization. Commits, pushes and publication are separate operations.
+
+The current fixed detector, `rust.forbidden-dependency.v1`, inspects Cargo
+dependency declarations; it does not run Cargo or resolve the complete dependency
+graph. Historical replay excludes today's reference packs and requires independent
+human adjudication.
+
+Missing context, expired knowledge, failed agents and omitted assessments remain
+coverage gaps. Exact citations verify source identity, not the correctness of
+model reasoning. Runtime or dependency changes require maintainer reapproval of
+affected runtime-bound records.
+
+## Documentation
+
+| Topic | Reference |
+| --- | --- |
+| Installation and distribution | [Distribution guide](docs/distribution.md) |
+| Project setup | [Environment and storage](.github/skills/repowise/references/setup.md) |
+| Knowledge accumulation | [Synchronization](.github/skills/repowise/references/sync.md), [learning](.github/skills/repowise/references/learning.md) |
+| Knowledge lifecycle | [Schema and revisions](.github/skills/repowise/references/knowledge.md), [approval](.github/skills/repowise/references/approval.md) |
+| PR review | [Review workflow](.github/skills/repowise/references/review.md), [role coordination](.github/skills/repowise/references/review-agents.md) |
+| Feature implementation | [Feature workflow](.github/skills/repowise/references/feature.md) |
+| Evaluation | [Temporal replay](.github/skills/repowise/references/replay.md), [scope and limitations](docs/pilot.md) |
+| Development | [Contributor instructions](AGENTS.md) |

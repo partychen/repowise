@@ -4,286 +4,269 @@
 
 > 把团队积累的经验，带进下一次代码变更。
 
-**RepoWise** 是一个 Copilot Skill，让同一份项目知识支撑三个完整流程：**沉淀工程经验、审查 PR，
-以及遵循本仓库架构和习惯实现 feature**。记忆是共享基础，不是最终目的。
+**RepoWise** 为 GitHub Copilot、Claude Code 和 Codex 提供持久化、有证据支撑的项目知识。
+它从 PR 评审中学习，将已批准的经验用于后续审查，并指导 agent 按照仓库架构和约定实现功能。
 
-代码仓库、Skill 和 CLI 统一使用 `repowise`。
+[安装](#安装) | [工作流](#工作流) | [审查角色](#审查角色) |
+[项目记忆](#项目记忆) | [信任模型](#信任模型) | [文档](#文档)
 
-项目知识**像滚雪球一样，从一个 PR 生长到下一个 PR**：学习已合并 PR，
-保存经验，用已批准的修订辅助后续评审，再随着新的人工反馈补充和修正。
-这是设计目标，不是已经测得的生产力提升。
+## 功能
 
-**PR 经验 → 项目记忆 → 带着经验评审 → 新的 PR 经验。**
-
-[运转流程](#运转流程) | [安装](#安装) | [第一次使用](#第一次使用指定项目)
-
-| 能力 | 用户得到什么 | 执行边界 |
-| --- | --- | --- |
-| 知识沉淀 | 可续跑的学习队列、有证据的经验与修订、可读审批交接 | 已授权的数据读取与外部本地存储 |
-| PR 审查 | 结合项目经验的发现、经过校验的代码对照、明确覆盖缺口 | 只读不可变代码和策略，不执行目标代码或发布评论 |
-| Feature 实现 | 宿主实际完成的代码修改、经授权的验证、完成或阻塞记录 | 用户授权的宿主编码工具负责实施；CLI 提供上下文，不授予权限 |
-
-## 设计理念：滚雪球，而不是静态检查清单
-
-一次 PR 评审留下的往往不只是“这里要改”，还有接口为什么这样设计、团队在意什么取舍、
-某种看起来不推荐的写法为什么在这里反而合理。这些判断不应该随着 PR 关闭而散落，
-也不应该在每次评审、每个新会话里从头学习。
-
-因此，持续进化的是**项目知识，而不是模型权重**。每轮学习都把新证据与已有经验对照：
-有的补充支持证据，有的揭示反例，有的说明旧知识应该修订甚至退出使用。
-“雪球变大”不只是规则数量增加，而是对这个项目的决策、适用条件和例外理解得更具体；
-它不应变成一张越来越长的禁令清单。
-
-一条有用的知识需要记录原则、适用路径与上下文、例外、正反例，以及带版本的证据链接。
-重复出现的评论、已解决的讨论和已合并的 PR 都是需要分析的证据，
-并不自动代表团队共识，更不等于规则已经获准生效。
-
-**假设示例，并非真实项目证据：**第一个 PR 暴露出请求边界缺少诊断上下文，
-形成一条经验；后一个 PR 提醒不能记录敏感请求值，于是需要补充例外；
-再后来的重构把上下文处理集中到统一入口，又需要缩小原有规则的适用范围。
-记忆应该保留这些观察，支持提出修订，而不是把第一条评论固化成“所有地方都要打日志”。
-
-### 仓库优先，而不是通用风格审查
-
-Reviewer 必须先检查本项目的架构边界、已有框架与工具、接口和类型契约、
-安全边界、错误与资源生命周期、并发性能、测试与可观测性、局部语法习惯及变更范围。
-不能把自己熟悉的技术栈、个人写法或通用最佳实践直接当作项目规则。
-建议优先融入已有机制；确实需要新机制时，应解释旧方案为什么不适用，
-同时考虑有意迁移、合法例外和旧代码本身的缺陷。
-
-这不只是 prompt 中的一句倡议：准备任务时会冻结 base/head 中有界的可比代码与工程上下文，
-模型响应必须分别评估要求的仓库维度。一致性类 Finding 除了已批准规则和当前代码证据，
-还必须提交经过校验的 BASE 对照引用，不能拿 PR 自己新加的例子证明“项目一贯如此”。
-直接可证的行为错误不必编造相似实现；漏评和缺失上下文会保留为覆盖缺口。
-引用校验只能证明来源和原文匹配，不能代替对模型推理是否正确的判断。
-详见[审查契约](.github/skills/repowise/references/review.md)。
-
-### 一个主审，按需分配审查角色
-
-小 PR 由主 agent 直接审查。较大或高风险变更按需使用六类子 agent：
-**架构、业务逻辑与契约、安全、可靠性、并发与性能、测试与可观测性**，
-不是每次固定启动六个。所有角色使用同一份冻结的项目上下文和已批准知识。
-
-主 agent 复核证据、处理冲突，并按同一根因归并发现，同时保留原始发现、规则和来源。
-同一行上的不同问题不会被覆盖；未执行或失败的角色会明确保留覆盖缺口，
-静态检测结果也不能被子 agent 或主 agent 隐藏。
-详见[宿主协调流程](.github/skills/repowise/references/review-agents.md)。
-
-### 各部分负责什么
-
-这是**一个 Skill**，而不是一组分别触发的 Rust Skill：
-
-| 部分 | 职责 |
+| 工作流 | 产出 |
 | --- | --- |
-| Skill 指令与工作流文档 | 引导助手完成采集、学习、审批和审查。 |
-| Copilot 等宿主助手 | 阅读证据，将新观察与已有知识对照，提炼经验，并分析当前变更。 |
-| 随 Skill 安装的 Python CLI | 读取 GitHub 数据、保存进度、校验证据和签名、准备 PR 与 feature 上下文、运行固定审查检测器并记录本地产物；不改目标代码、不运行项目命令、不调用模型 API。 |
-| 按项目隔离的外部数据目录 | 跨会话保存知识、审批和报告，不向目标仓库或 Skill 安装目录写入项目数据。 |
-| Rust 参考包 | 提供审查问题和反例，不是项目规则，也不是独立触发的 Skill。 |
+| 学习 PR 经验 | 可续跑的采集流程、有适用范围的知识、支持证据和修订历史 |
+| 审查代码变更 | 结合项目上下文的发现、经过校验的源码引用和明确的覆盖缺口 |
+| 实现功能 | Agent 完成的代码修改、经授权的检查和完成记录 |
 
-## 运转流程
+项目知识随着新的 PR 证据持续演进：后续评审可以补充支持证据、揭示例外或推动修订。
+演进的是项目知识，而非模型权重。每条知识保留适用范围、反例和来源，
+只有维护者批准的具体修订才能成为审查策略。
 
-```mermaid
-flowchart LR
-    PR["已合并 PR 与评审反馈"] --> Learn["同步证据，由宿主学习"]
-    Memory["已保存的知识候选"] --> Learn
-    Learn --> Memory
-    Memory -->|维护者签名并提交到独立的知识仓库| Policy["可信的已批准知识"]
-    Policy --> Review["审查后续变更，生成本地报告"]
-    Code["固定版本的项目架构、框架与惯用法"] -->|仅作证据，不是规则授权| Review
-    Policy --> Feature["经用户授权，由宿主实现 feature"]
-    Code -->|项目上下文| Feature
-    Feature --> NewPR["用户的代码变更与另行请求创建的 PR"]
-    NewPR -.->|人工反馈、合并后再学习| PR
-    Review -.->|人工反馈、合并后，再次同步| PR
-```
+## 环境要求
 
-1. **采集证据。** `sync` 分批读取已合并 PR 的评审和讨论，保存可恢复的进度、
-   证据版本和可获得的代码上下文。源码缺失或 API 读取失败会保留为明确的覆盖缺口。
-2. **对照、提炼、保存。** 宿主同时阅读新证据和已有知识索引，考虑支持证据与反例，
-   提出有适用范围的经验或修订。`propose` 校验并保存结果，`status` 重建累积索引。
-   精确匹配的经验会归组并保留证据关联；语义合并仍由宿主判断。
-   不是每个 PR 都必须产出一条新知识。
-3. **人工批准。** 积累知识不需要先审批；要用于规则审查，维护者必须检查具体修订，
-   按[审批流程](.github/skills/repowise/references/approval.md)进行 SSH 签名，
-   再将校验后的知识和审批记录提交到外部数据目录自己的可信 Git 历史，不是目标分支。
-   静态检测器还需要单独批准；助手不能代签或给自己授权。
-4. **反哺后续评审。** `review` 固定目标代码的 base/head 提交，以及维护者从外部知识仓库
-   选定的可信策略提交，使用符合条件的已批准规则，按需运行另行批准的固定检测器，
-   并冻结有界的可比代码，生成仓库优先的宿主任务。`finalize` 校验宿主结果及 BASE 对照引用，
-   输出包含工程评估、证据和覆盖缺口的本地报告。
-   纯静态检查可在准备阶段直接完成；人工规则仍需人工覆盖。
-5. **实现 feature。** `feature` 准备项目知识和相关基线代码。取得用户授权后，
-   宿主实际完成代码修改、关联处接线及必要文档，保留无关改动，并运行经授权的相关检查。
-   `feature-finish` 记录真实宿主结果和缺口；生成了方案或任务 JSON 不等于 feature 完成。
-6. **进入下一轮。** 人继续评审、讨论和合并 PR。后续调用 `sync` 时，
-   新增或变化的已合并 PR 证据再次与已有知识对照，推动下一轮修订提案。
-   修改或停用已批准规则仍需要新的签名修订；本地模型发现不会被自动当作
-   “已接受的历史反馈”重新灌入知识库。
+| 依赖 | 用途 |
+| --- | --- |
+| GitHub Copilot CLI、Claude Code 或 Codex CLI | 执行 Skill 并完成推理 |
+| 带 `npx` 的 Node.js | 安装 Skill |
+| 带 `venv`、`ensurepip` 的 Python 3.11+ | 执行内置 CLI |
+| Git | 读取不可变的代码和策略提交 |
+| 已认证的 GitHub CLI（`gh`） | 采集 PR 元数据、评审和讨论 |
+| 支持 SSH 签名的 OpenSSH | 签署和验证策略审批 |
 
-这里的“持续”是**记忆持久化、每次调用接着学习**，不是安装后就自主运行。
-Skill 不附带调度器或 webhook；增量 PR 元数据可能漏掉评论编辑，
-完成待处理队列后可完整刷新反馈。采集完成、学习完成、规则获批是三个不同状态。
-
-当前版本不自动发 PR 评论、提交、推送或决定合并。CLI 不修改目标代码；
-feature 的实际编码由另行取得用户授权的宿主完成。
-审查使用可信安装的运行时和不可变 Git 对象，不检出 PR 代码，不运行目标项目的构建、
-测试或 hooks。当前唯一的固定检测器是 `rust.forbidden-dependency.v1`，
-它分析 Cargo 依赖声明，而不是运行 Cargo。证据不足、知识过期或模型漏评都会保留为缺口，
-“没有发现问题”不等于“已经证明没有问题”。详见[当前范围与限制](docs/pilot.md)。
-
-## 安装
-
-```powershell
-npx skills add partychen/repowise --skill repowise -a github-copilot -g
-```
-
-需要 Node.js/npx，以及带 `venv`、`ensurepip` 的 Python 3.11+。
-同步 GitHub 项目前，先完成 GitHub CLI 登录：
+访问仓库前，完成 GitHub CLI 认证：
 
 ```powershell
 gh auth login
 ```
 
-已经登录的用户无需重复登录。首次使用时，助手会创建隔离 Python 环境，
-安装随 Skill 分发、固定哈希的纯 Python PyYAML wheel。
-**依赖准备完全离线，不访问 PyPI，也不需要编译器。**
-不需要你另装 Python 后端或配置模型 API Key；下载 Skill 和同步 GitHub 仍需要相应的网络访问。
+首次使用时，agent 会通过内置、固定哈希的 PyYAML wheel 准备隔离 Python 环境。
+依赖安装离线完成，无需单独安装运行时或配置模型 API Key。
+环境及 Git 要求详见[项目设置](.github/skills/repowise/references/setup.md)。
 
-如果连 Skill 文件也不希望放进目标仓库，保留安装命令中的 `-g`，使用个人级安装。
-运行时不会在目标仓库创建 `.review`，也不会修改它的忽略文件。
+## 安装
 
-## 安装后怎么调用
+选择使用的 agent，在本地项目目录中执行对应的终端命令，
+然后在 agent 对话中输入 Skill 请求。`-g` 将 Skill 安装到用户级目录，供各项目使用。
 
-**打开你要学习的项目，在 AI 助手的对话框里输入下面的话，而不是在 PowerShell 中输入。**
+### GitHub Copilot CLI
 
-最直接的方式是明确写出 Skill 名称：
+**终端**
 
-```text
-使用 repowise，同步这个项目的 PR，并积累评审知识。
+```powershell
+npx skills add partychen/repowise --skill repowise -a github-copilot -g
+copilot
 ```
 
-在 Copilot CLI 中，也可以通过 `/repowise` 显式指定：
+**Skill 请求**
 
 ```text
-使用 /repowise，同步这个项目的 PR，并积累评审知识。
+使用 /repowise，同步当前项目的 PR 评审并建立项目知识。
 ```
 
-“同步 PR”“学习历史评审”“积累评审知识”等任务描述可帮助助手自动匹配。
-**推荐直接带上 `repowise`，不要依赖单个关键词触发。**
+[GitHub Copilot Skill 文档](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills)
 
-如果安装时 Copilot CLI 已经打开，先在 CLI 会话内执行：
+### Claude Code
 
-```text
-/skills reload
-/skills info repowise
+**终端**
+
+```powershell
+npx skills add partychen/repowise --skill repowise -a claude-code -g
+claude
 ```
 
-其他宿主如果没有刷新到新 Skill，重新打开会话，并确认安装时选择了对应宿主。
-
-## 第一次使用：指定项目
-
-在目标项目会话中输入，替换成你自己的 GitHub 项目：
+**Skill 请求**
 
 ```text
-使用 repowise。
-项目是 https://github.com/acme/my-project，本地目录就是当前工作区。
-同步已合并 PR 的评审记录，提炼经验并保存为项目知识。
+/repowise 同步当前项目的 PR 评审并建立项目知识。
 ```
 
-这里的 `acme/my-project` 是**你要学习的项目**，不是安装命令中的 Skill 仓库。
-如果缺少项目地址或本地目录，助手会询问，不会替你随意选择。
+[Claude Code Skill 文档](https://code.claude.com/docs/en/skills)
 
-这会启动上面的采集与学习阶段：助手记录项目绑定、准备运行环境、处理证据，
-并报告已积累的知识和剩余工作，不会替你批准产生的候选。
+### Codex CLI
 
-默认每批处理 20 个 PR。历史较多或会话预算不足时会保存进度，下次继续。
-如果只想学习某段历史，可以在首次连接时说明：
+**终端**
+
+```powershell
+npx skills add partychen/repowise --skill repowise -a codex -g
+codex
+```
+
+**Skill 请求**
 
 ```text
-使用 repowise，为 acme/my-project 学习 2026-01-01 之后合并的 PR。
+$repowise 同步当前项目的 PR 评审并建立项目知识。
+```
+
+[Codex Skill 文档](https://developers.openai.com/codex/skills/)
+
+## 工作流
+
+以下请求适用于各 agent 的对话。可以使用上述显式调用方式，
+也可以在请求中直接指定 `repowise`。
+
+### 1. 连接项目并学习
+
+指定 GitHub 仓库及其已有的本地工作区：
+
+```text
+使用 repowise，项目是 https://github.com/acme/my-project。
 本地目录使用当前工作区。
+同步已合并 PR 的评审，提炼经验并保存为项目知识。
 ```
 
-单独通过 `harvest`、`bootstrap` 采集的任务也进入与 `sync` 相同的学习队列和知识索引，
-不需要额外启动全量扫描。同一知识的修订会关联各自证据；不同提案保持分开，
-不会被自动合并成共识或批准规则。
+将 `acme/my-project` 替换为目标仓库。Agent 会绑定项目、采集评审证据，
+与已有经验对照，并保存经过校验的知识提案。结果包含累积知识和剩余工作。
 
-## 后续常用指令
+默认范围为已合并 PR 历史，每批处理 20 个，进度跨会话保存。
+指定初始时间范围：
 
-| 想做什么 | 在助手对话中输入 |
+```text
+使用 repowise，学习当前项目自 2026-01-01 起合并的 PR。
+```
+
+| 任务 | 请求 |
 | --- | --- |
-| 继续同步与学习 | 使用 repowise，继续同步当前项目，并完成剩余知识提炼。 |
-| 看进度 | 使用 repowise，查看当前项目还有多少 PR 和学习任务待处理。 |
-| 看积累的知识 | 使用 repowise，汇总当前项目的知识，并列出支持它们的 PR。 |
-| 完整补查历史反馈 | 使用 repowise，完成待处理队列后，完整刷新历史 PR 的评审记录。 |
-| 学习指定 PR | 使用 repowise，学习 acme/my-project 的 PR #123，提炼并保存评审经验。 |
-| 开始知识审批 | 使用 repowise，展示待审批候选及证据，为我选中的知识准备维护者签名材料。 |
-| 指定分工审查 | 使用 repowise，让架构、安全、可靠性角色审查 PR #123，再由主 agent 复核并归并发现。 |
-| 用已批准知识审查 | 使用 repowise，按当前项目已批准的规则审查这次变更。 |
-| 审查指定 PR | 使用 repowise，审查 https://github.com/acme/my-project/pull/123，并采用选定的项目策略。 |
-| 实现 feature | 使用 repowise，按现有架构和已批准知识实现这个 feature，保留我的已有修改，并取得所需验证命令的授权。 |
+| 继续学习 | 使用 repowise，继续同步当前项目并完成待处理的学习任务。 |
+| 查看进度 | 使用 repowise，显示剩余 PR 和学习任务。 |
+| 浏览知识 | 使用 repowise，汇总项目知识并附上支持它们的 PR 链接。 |
+| 学习单个 PR | 使用 repowise，学习 PR #123 并保存评审经验。 |
+| 刷新评审 | 使用 repowise，完成待处理队列后，完整刷新历史 PR 的评审记录。 |
 
-审查 PR 时，宿主可以直接使用 `review --pr 编号或URL`，无需用户手工拼接代码 SHA；
-CLI 只解析本地不可变版本，不检出或拉取目标代码。实现 feature 时，
-`feature` 准备上下文，宿主经授权后实际编码和验证，最后用 `feature-finish` 记录结果。
-**上下文包或书面方案不是已完成的实现。**
-详见 [feature 工作流](.github/skills/repowise/references/feature.md)。
+学习由请求触发；安装不启动调度器或 webhook。
+采集、学习和策略审批分别记录完成状态。
 
-## 到哪里审批知识
+### 2. 批准项目知识
 
-在对话中让助手展示**待审批清单**。助手应直接呈现可阅读的原则、证据、适用范围、
-例外和缺失条件，而不是只给你一个索引 JSON 路径。你选择要审阅的候选后，
-助手使用你指定的负责人、签名身份和理由，生成精确的待签名请求；
-不会为了通过审批而编造缺失的例子或证据。
+```text
+使用 repowise，展示待审批的知识候选、证据、适用范围和例外。
+为我选中的修订准备签名请求。
+```
 
-对应命令是 `approval-queue` 和 `prepare-approval`。
-维护者本人配置可信签名身份并在助手之外签名，`approve` 负责验签和导入。
-正式启用还需要把批准记录纳入**外部知识目录自己的 Git 历史**，不需要向目标仓库提交文件。
-具体步骤见[审批流程](.github/skills/repowise/references/approval.md)。
-审批不阻塞继续学习剩余 PR。
+Agent 展示可读预览并准备未签名的审批请求。
+维护者配置可信签名身份、签署选定修订，再将经过验证的记录提交到外部知识目录的 Git 仓库。
+后续审查可以选用该策略提交。
 
-## 知识保存在哪里
+学习不要求预先审批。知识审批与检测器审批相互独立；agent 不代签或授予信任。
+详见[审批流程](.github/skills/repowise/references/approval.md)。
 
-项目数据放在目标仓库和 Skill 安装目录之外：
+### 3. 审查 PR
+
+准备好已批准的知识后，指定 PR 和可信策略提交：
+
+```text
+使用 repowise，审查 https://github.com/acme/my-project/pull/123。
+使用项目外部知识仓库中的 POLICY_SHA 作为可信策略提交。
+```
+
+将 `POLICY_SHA` 替换为维护者选定的提交。RepoWise 从本地 Git 对象解析 PR 的不可变
+BASE/HEAD，采集有界的项目上下文并准备审查。所需代码对象须已存在于本地。
+
+审查涵盖架构、已有框架与工具、契约、安全、资源生命周期、并发、测试、惯用法和变更范围。
+一致性类发现需要精确的 BASE 对照；行为错误需要具体影响和触发条件。
+所有策略类发现均引用已批准的知识修订。
+
+产出为包含发现、证据、评估和覆盖缺口的本地报告。
+Markdown 按组展示相关发现并提供可展开的支持证据；
+JSON 保留底层记录和来源。
+
+### 4. 实现功能
+
+```text
+使用 repowise，为现有列表接口实现游标分页。
+遵循项目架构和适用的已批准知识。
+允许修改相关文件并运行现有的针对性检查。
+保留我的已有修改，不要提交或推送。
+```
+
+Agent 准备项目上下文，执行获授权的修改与检查，并记录实际结果。
+没有已批准策略时也可以开始实现，缺失的策略覆盖会明确记录。
+完成记录包含变更文件、检查结果和剩余工作。
+
+## 审查角色
+
+主 agent 负责最终覆盖和结果归并。专业角色基于同一份冻结的代码、
+项目上下文和已批准知识开展专项分析。
+
+| 角色 | 关注点 |
+| --- | --- |
+| 架构 | 模块边界、依赖方向、已有机制和局部惯用法 |
+| 业务逻辑与契约 | 业务不变量、类型、调用行为、兼容性和迁移范围 |
+| 安全 | 认证、授权、不可信输入、敏感数据和隔离 |
+| 可靠性 | 错误传播、取消、重试、部分失败和资源清理 |
+| 并发与性能 | 竞态、阻塞、竞争、背压和资源上限 |
+| 测试与可观测性 | 回归场景、有效断言和诊断信号 |
+
+自动规划将小变更交给主 agent，对较大变更选择相关角色。
+也可以显式指定审查分工：
+
+```text
+使用 repowise，让架构、安全和可靠性角色审查 PR #123。
+最多同时运行两个子 agent，最后复核并归并发现。
+```
+
+默认并发上限为三个子 agent。执行使用宿主提供的子 agent 工具；
+单 agent 和串行执行分别记录。缺失或失败的角色保留为覆盖缺口。
+
+主 agent 复核推理、处理分歧并按根因归组。
+原始证据和驳回理由保持可追溯；同一位置的不同缺陷分别保留，
+静态检测结果不能被隐藏。
+路由、CLI 选项和响应格式详见[审查协调](.github/skills/repowise/references/review-agents.md)。
+
+## 项目记忆
+
+每个本地工作区都有独立的外部知识目录：
 
 ```text
 ~\.repowise\projects\<项目名>-<路径哈希>\.review\
 ```
 
-规范化的本地路径决定独立空间，目录名只是便于识别的标签；另行核对保存的 GitHub 仓库绑定。
-同名但路径不同的项目不会混用知识。`doctor`、`sync`、`status` 返回准确的
-`storage_root` 和 `local_path`；产物中的相对路径以 `storage_root` 为基准，
-**不再以目标仓库为基准**。
+规范化的工作区路径决定独立空间，GitHub 仓库绑定另行验证。
+命令返回准确的 `storage_root` 和 `local_path`；
+产物中的相对路径以 `storage_root` 为基准。
 
-下表路径都位于这个外部 `storage_root` 内：
-
-| 路径 | 内容 |
+| 相对于外部存储根目录的路径 | 内容 |
 | --- | --- |
-| `.review/config.yaml` | 项目绑定 |
-| `.review/project.json` | 本地目标路径绑定，不进入策略 Git 历史 |
-| `.review/local/state/sync.json` | 同步进度和待处理 PR |
-| `.review/local/raw/evidence` | 带版本的 PR 证据及其可用性信息 |
-| `.review/local/proposals` | 学习任务、宿主响应、知识候选及其证据关联 |
-| `.review/local/learning/index.json` | 累积的**未批准**知识索引，供后续学习复用 |
-| `.review/knowledge`、`.review/approvals` | 用于可信策略的知识修订与签名审批记录 |
-| `.review/detectors` | 单独批准的固定检测器配置 |
-| `.review/local/runs` | 本地审查任务、发现、报告与覆盖缺口 |
-| `.review/local/features` | Feature 上下文、宿主修改与验证结果、完成记录 |
+| `.review/config.yaml`、`.review/project.json` | 项目配置和本地工作区绑定 |
+| `.review/local/state/sync.json` | 采集进度和待处理 PR |
+| `.review/local/raw/evidence` | 带版本的评审证据 |
+| `.review/local/proposals`、`.review/local/learning/index.json` | 候选、响应、修订关联和未批准知识 |
+| `.review/knowledge`、`.review/approvals`、`.review/detectors` | 知识修订、签名和检测器审批 |
+| `.review/local/runs` | 审查任务、子 agent 记录和报告 |
+| `.review/local/features` | 功能上下文和完成记录 |
+| `.review/local/evaluation` | 回放任务和独立裁定 |
 
-更新或重新安装 Skill 不会替换这个独立数据目录。
-也可以用 `--data-home` 或 `REPOWISE_HOME` 指定其他绝对路径的外部父目录。
-CLI 不修改目标仓库及其 `.gitignore`；经授权的 feature 修改由宿主执行，而不是 CLI。
-忽略 `.review/local` 的规则只存在于外部知识仓库。
-项目只有这一套外部存储布局，不回退到目标仓库中的记忆数据。
+通过 `REPOWISE_HOME` 或 CLI 的 `--data-home` 选项指定其他外部父目录。
+更新 Skill 保留项目记忆。CLI 不在目标工作区创建知识文件或忽略规则。
 
-## 更多说明
+## 信任模型
 
-- [安装、存储与发布](docs/distribution.zh.md)
-- [同步流程](.github/skills/repowise/references/sync.md)
-- [从历史中学习](.github/skills/repowise/references/learning.md)
-- [知识结构与生命周期](.github/skills/repowise/references/knowledge.md)
-- [知识审批](.github/skills/repowise/references/approval.md)
-- [代码审查](.github/skills/repowise/references/review.md)
-- [Feature 实现](.github/skills/repowise/references/feature.md)
-- [历史回放与独立评估](.github/skills/repowise/references/replay.md)
+| 组件 | 职责 |
+| --- | --- |
+| 宿主 agent | 分析证据、协调审查并执行获授权的功能开发 |
+| 内置 CLI | 采集数据、冻结上下文、校验签名和响应、运行已批准的固定检测器并保存产物 |
+| 维护者 | 选择可信策略、管理签名身份、批准知识和工具修订 |
+| 参考包 | 提供 Rust 审查问题和反例，不构成仓库策略 |
+
+学习与审查读取不可变 Git 对象，不运行目标项目的构建、测试、hooks 或生成的检测器。
+功能修改和检查需要用户授权；提交、推送和发布属于独立操作。
+
+当前固定检测器 `rust.forbidden-dependency.v1` 分析 Cargo 依赖声明，
+不运行 Cargo 或解析完整依赖图。
+历史回放不使用当前版本的参考包，并要求独立人工裁定。
+
+上下文缺失、知识过期、agent 失败和漏评均保留为覆盖缺口。
+精确引用校验证明来源一致性，不证明模型推理正确。
+运行时或依赖变化后，受运行时绑定影响的记录需要维护者重新审批。
+
+## 文档
+
+| 主题 | 参考 |
+| --- | --- |
+| 安装与分发 | [分发指南](docs/distribution.zh.md) |
+| 项目设置 | [环境与存储](.github/skills/repowise/references/setup.md) |
+| 知识积累 | [同步](.github/skills/repowise/references/sync.md)、[学习](.github/skills/repowise/references/learning.md) |
+| 知识生命周期 | [结构与修订](.github/skills/repowise/references/knowledge.md)、[审批](.github/skills/repowise/references/approval.md) |
+| PR 审查 | [审查流程](.github/skills/repowise/references/review.md)、[角色协调](.github/skills/repowise/references/review-agents.md) |
+| 功能实现 | [功能工作流](.github/skills/repowise/references/feature.md) |
+| 评估 | [历史回放](.github/skills/repowise/references/replay.md)、[范围与限制](docs/pilot.md) |
+| 项目开发 | [贡献指南](AGENTS.md) |
