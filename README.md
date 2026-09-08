@@ -1,12 +1,15 @@
-# Review Memory
+# RepoWise
 
 English | [Simplified Chinese](README.zh.md)
 
-**RepoWise** is the project name; its Copilot skill and repository remain
-`review-memory`. One project memory supports three workflows: **accumulate
+> Your team's experience. Your agent's next change.
+
+**RepoWise** is a Copilot skill with one shared project memory supporting three workflows: **accumulate
 engineering knowledge, review PRs, and implement features in the project's
 existing architecture and conventions**. Memory is the shared foundation,
 not an end in itself.
+
+The repository, Skill and CLI are all named `repowise`.
 
 Project knowledge **grows like a snowball**: learn from merged PRs, preserve useful
 lessons, apply approved revisions in later reviews, and refine them as new
@@ -63,7 +66,7 @@ current code evidence; an example newly added by the PR cannot establish an old
 convention. Direct behavior defects need not invent a precedent. Omitted
 assessments and missing context remain visible gaps. Citation validation proves
 source identity, not the correctness of the model's conclusion.
-See the [review contract](.github/skills/review-memory/references/review.md).
+See the [review contract](.github/skills/repowise/references/review.md).
 
 ### What runs where
 
@@ -104,7 +107,7 @@ flowchart LR
    semantic merging requires host reasoning. A PR need not yield a new lesson.
 3. **Approve deliberately.** Learning does not require approval. To use a lesson
    as review policy, a maintainer inspects and SSH-signs an exact revision through
-   the [approval workflow](.github/skills/review-memory/references/approval.md).
+   the [approval workflow](.github/skills/repowise/references/approval.md).
    Verified knowledge and approval records must then be committed to the
    external memory's own trusted Git history, not the target branch.
    Static detectors need separate approval;
@@ -144,7 +147,7 @@ of correctness. See [pilot scope and limitations](docs/pilot.md).
 ## Install
 
 ```powershell
-npx skills add partychen/review-memory --skill review-memory -a github-copilot -g
+npx skills add partychen/repowise --skill repowise -a github-copilot -g
 ```
 
 Requires Node.js/npx and Python 3.11+ with `venv` and `ensurepip`. For GitHub
@@ -169,25 +172,25 @@ either. Runtime commands never create a target `.review` or change its ignore fi
 not in PowerShell:**
 
 ```text
-Use review-memory to sync this project's PR reviews and build its review knowledge.
+Use repowise to sync this project's PR reviews and build its review knowledge.
 ```
 
-In Copilot CLI, you can explicitly select the skill with `/review-memory`:
+In Copilot CLI, you can explicitly select the skill with `/repowise`:
 
 ```text
-Use /review-memory to sync this project's PR reviews and build its review knowledge.
+Use /repowise to sync this project's PR reviews and build its review knowledge.
 ```
 
 Requests such as "sync PR reviews", "learn from past reviews", and "accumulate team
 review knowledge" help the assistant select the skill automatically. **Include
-`review-memory` by name for the most explicit invocation.**
+`repowise` by name for the most explicit invocation.**
 
 If Copilot CLI was already running when you installed the skill, run these inside
 the CLI session:
 
 ```text
 /skills reload
-/skills info review-memory
+/skills info repowise
 ```
 
 For other hosts, select the corresponding agent during installation and reopen
@@ -198,7 +201,7 @@ the session if the new skill has not been discovered.
 Enter this in your target project's session, replacing the repository URL:
 
 ```text
-Use review-memory.
+Use repowise.
 My project is https://github.com/acme/my-project.
 Use the current workspace as its local directory.
 Sync merged PR reviews, extract useful lessons, and save them as project knowledge.
@@ -216,7 +219,7 @@ The default batch size is 20 PRs. Large histories or session limits leave a save
 queue that a later invocation can resume. To limit the initial history:
 
 ```text
-Use review-memory to learn from acme/my-project's PRs merged since 2026-01-01.
+Use repowise to learn from acme/my-project's PRs merged since 2026-01-01.
 Use the current workspace as the local directory.
 ```
 
@@ -229,22 +232,22 @@ unequal alternatives separate and unapproved.
 
 | Goal | What to say in the assistant's chat |
 | --- | --- |
-| Continue syncing and learning | Use review-memory to continue syncing this project and finish pending knowledge extraction. |
-| Check progress | Use review-memory to show the remaining PRs and learning tasks for this project. |
-| Browse accumulated knowledge | Use review-memory to summarize this project's knowledge and link to the supporting PRs. |
-| Recheck historical feedback | Use review-memory to finish the pending queue, then fully refresh historical PR feedback. |
-| Learn from one PR | Use review-memory to learn from acme/my-project PR #123 and save the review lessons. |
-| Start knowledge approval | Use review-memory to show the pending candidates with evidence and prepare the ones I select for maintainer signing. |
-| Review changes | Use review-memory to review these changes using this project's approved rules. |
-| Review a GitHub PR | Use review-memory to review https://github.com/acme/my-project/pull/123 using the selected project policy. |
-| Implement a feature | Use review-memory to implement this feature using the project's existing architecture and approved knowledge; preserve my existing changes and obtain authorization for the needed checks. |
+| Continue syncing and learning | Use repowise to continue syncing this project and finish pending knowledge extraction. |
+| Check progress | Use repowise to show the remaining PRs and learning tasks for this project. |
+| Browse accumulated knowledge | Use repowise to summarize this project's knowledge and link to the supporting PRs. |
+| Recheck historical feedback | Use repowise to finish the pending queue, then fully refresh historical PR feedback. |
+| Learn from one PR | Use repowise to learn from acme/my-project PR #123 and save the review lessons. |
+| Start knowledge approval | Use repowise to show the pending candidates with evidence and prepare the ones I select for maintainer signing. |
+| Review changes | Use repowise to review these changes using this project's approved rules. |
+| Review a GitHub PR | Use repowise to review https://github.com/acme/my-project/pull/123 using the selected project policy. |
+| Implement a feature | Use repowise to implement this feature using the project's existing architecture and approved knowledge; preserve my existing changes and obtain authorization for the needed checks. |
 
 For PRs, the host can use `review --pr NUMBER_OR_URL`; the CLI resolves the
 local immutable revisions without checkout or fetch. For features, the host
 uses `feature` to prepare context, then actually implements and verifies within
 the user's authorization, and records the outcome with `feature-finish`.
 Neither a context packet nor a written plan is a completed implementation.
-See the [feature workflow](.github/skills/review-memory/references/feature.md).
+See the [feature workflow](.github/skills/repowise/references/feature.md).
 
 ## Where do I approve knowledge?
 
@@ -260,7 +263,7 @@ the review/signing handoff. The maintainer configures signer trust and signs
 outside the assistant; `approve` verifies and imports that signature. Approved
 records must enter the **external memory repository's** trusted Git history before
 policy review uses them. No target-repository commit is required.
-See the [guided approval workflow](.github/skills/review-memory/references/approval.md).
+See the [guided approval workflow](.github/skills/repowise/references/approval.md).
 Approval never blocks continued PR learning.
 
 ## Where knowledge is stored
@@ -268,7 +271,7 @@ Approval never blocks continued PR learning.
 Project state is outside both the target and the Skill installation:
 
 ```text
-~\.review-memory\projects\<project-name>-<path-hash>\.review\
+~\.repowise\projects\<project-name>-<path-hash>\.review\
 ```
 
 The canonical local path determines the namespace; the readable name is only a
@@ -293,7 +296,7 @@ The following paths are inside that external `storage_root`:
 | `.review/local/features` | Feature context, host implementation/check reports, and completion records |
 
 Updating or reinstalling the Skill leaves this independent data directory in
-place. `--data-home` or `REVIEW_MEMORY_HOME` can select another absolute external
+place. `--data-home` or `REPOWISE_HOME` can select another absolute external
 parent directory. The CLI leaves the target and its `.gitignore` unchanged;
 authorized feature edits are performed by the host, not the CLI.
 `.review/local` is ignored only inside the external policy repository.
@@ -302,10 +305,10 @@ There is one external-storage layout, with no target-local memory fallback.
 ## Further reading
 
 - [Installation, storage, and distribution](docs/distribution.md)
-- [Synchronization workflow](.github/skills/review-memory/references/sync.md)
-- [Learning from history](.github/skills/review-memory/references/learning.md)
-- [Knowledge structure and lifecycle](.github/skills/review-memory/references/knowledge.md)
-- [Knowledge approval](.github/skills/review-memory/references/approval.md)
-- [Code review](.github/skills/review-memory/references/review.md)
-- [Feature implementation](.github/skills/review-memory/references/feature.md)
-- [Temporal replay and independent evaluation](.github/skills/review-memory/references/replay.md)
+- [Synchronization workflow](.github/skills/repowise/references/sync.md)
+- [Learning from history](.github/skills/repowise/references/learning.md)
+- [Knowledge structure and lifecycle](.github/skills/repowise/references/knowledge.md)
+- [Knowledge approval](.github/skills/repowise/references/approval.md)
+- [Code review](.github/skills/repowise/references/review.md)
+- [Feature implementation](.github/skills/repowise/references/feature.md)
+- [Temporal replay and independent evaluation](.github/skills/repowise/references/replay.md)

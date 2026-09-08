@@ -1,5 +1,5 @@
 {
-  "schema_version": "review-memory.collection-fixture.v1",
+  "schema_version": "repowise.collection-fixture.v1",
   "repository": "example/project",
   "notice": "Synthetic fixture for exercising the pipeline. Not real PR history, policy, or evaluation evidence.",
   "prs": [

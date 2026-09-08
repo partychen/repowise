@@ -22,7 +22,7 @@ def markdown(report: dict) -> str:
                     f"{reference['path']}:{reference['line_start']}-{reference['line_end']}")
         return [text(location), "", *["> " + text(line) for line in reference["text"].split("\n")], ""]
 
-    lines = ["# Review Memory review", "",
+    lines = ["# RepoWise review", "",
              f"Status: {text(report['status'])}. This is not a claim that the PR is correct.",
              f"Findings: {report['total_findings']}; omitted from display: {report['omitted_findings']}.", ""]
     if report.get("pull_request") is not None:
@@ -79,8 +79,8 @@ def render_html(report: dict) -> str:
     return ('<!doctype html><html lang="en"><meta charset="utf-8">'
             '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
             'base-uri \'none\'; form-action \'none\'">'
-            '<title>Review Memory review</title><body>'
-            '<h1>Review Memory review</h1>'
+            '<title>RepoWise review</title><body>'
+            '<h1>RepoWise review</h1>'
             '<p>Local bounded review, not a claim that the PR is correct.</p>'
             '<pre>' + body + '</pre></body></html>')
 

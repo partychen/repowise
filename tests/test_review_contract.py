@@ -5,11 +5,11 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".github" / "skills" /
-                       "review-memory" / "scripts"))
+                       "repowise" / "scripts"))
 
-from review_memory.common import Error
-from review_memory.review import _validate_response
-from review_memory.review_contract import (
+from repowise.common import Error
+from repowise.review import _validate_response
+from repowise.review_contract import (
     BASELINE_DIMENSIONS, REPOSITORY_DIMENSIONS, validate_comparisons,
     validate_reference, validate_repository_assessments,
 )

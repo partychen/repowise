@@ -1,8 +1,8 @@
-"""Isolated, stdlib-only launcher for the installed review-memory Skill."""
+"""Isolated, stdlib-only launcher for the installed repowise Skill."""
 import sys
 
 if __name__ == "__main__" and not sys.flags.isolated:
-    sys.stderr.write("review-memory: launch with Python 3.11+ in isolated mode: "
+    sys.stderr.write("repowise: launch with Python 3.11+ in isolated mode: "
                      'python -I "<installed skill>/scripts/main.py" setup\n')
     raise SystemExit(2)
 
@@ -70,18 +70,18 @@ def cache_key(content):
 
 
 def cache_root(argv):
-    override = os.environ.get("REVIEW_MEMORY_CACHE")
+    override = os.environ.get("REPOWISE_CACHE")
     if override:
         root = Path(override).expanduser()
     elif sys.platform == "win32":
         # Store Python virtualizes LocalAppData into a much longer package path.
-        root = Path.home() / ".cache" / "review-memory"
+        root = Path.home() / ".cache" / "repowise"
     elif sys.platform == "darwin":
-        root = Path.home() / "Library" / "Caches" / "review-memory"
+        root = Path.home() / "Library" / "Caches" / "repowise"
     else:
-        root = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "review-memory"
+        root = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "repowise"
     if not root.is_absolute():
-        raise LauncherError("REVIEW_MEMORY_CACHE / platform cache location must be an absolute path.")
+        raise LauncherError("REPOWISE_CACHE / platform cache location must be an absolute path.")
     root = root.resolve()
     protected = [SKILL]
     if SKILL.parent.name == "skills" and SKILL.parent.parent.name == ".github":
@@ -96,7 +96,7 @@ def cache_root(argv):
             protected.append(Path(arg.partition("=")[2]).resolve())
     if any(root.is_relative_to(path) for path in protected):
         raise LauncherError("Runtime cache must be outside the target project and installed Skill/source. "
-                            "Set REVIEW_MEMORY_CACHE to an absolute, private user-cache directory.")
+                            "Set REPOWISE_CACHE to an absolute, private user-cache directory.")
     return root
 
 
@@ -138,7 +138,7 @@ def diagnostics(text):
 
 
 def checked_run(command, *, cwd, stage, timeout):
-    print(f"review-memory: {stage} (timeout: {timeout}s)...", file=sys.stderr, flush=True)
+    print(f"repowise: {stage} (timeout: {timeout}s)...", file=sys.stderr, flush=True)
     try:
         result = subprocess.run(command, cwd=cwd, env=clean_environment(),
                                 capture_output=True, text=True, timeout=timeout)
@@ -151,7 +151,7 @@ def checked_run(command, *, cwd, stage, timeout):
     if result.returncode:
         details = diagnostics("\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip()))
         raise LauncherError(f"{stage} failed (exit {result.returncode}).\n{details}")
-    print(f"review-memory: {stage} complete.", file=sys.stderr, flush=True)
+    print(f"repowise: {stage} complete.", file=sys.stderr, flush=True)
 
 
 def probe_environment(environment, version):
@@ -205,7 +205,7 @@ def setup(environment, key, requirement_path, version):
                 raise LauncherError(f"{exc}\n{repair_message(environment)}") from exc
     finally:
         lock.rmdir()
-    print(f"review-memory runtime ready: {environment}")
+    print(f"repowise runtime ready: {environment}")
     return 0
 
 
@@ -217,20 +217,20 @@ def run_bundled(environment, version, argv):
     if (getattr(yaml, "__version__", None) != version
             or not Path(yaml.__file__).resolve().is_relative_to(environment)):
         raise LauncherError(f"Cached PyYAML does not match the declared dependency. {repair_message(environment)}")
-    package = SCRIPT.parent / "review_memory"
+    package = SCRIPT.parent / "repowise"
     if not (package / "__init__.py").is_file() or not (package / "cli.py").is_file():
         raise LauncherError("Installed Skill is missing its bundled runtime; reinstall the Skill.")
     # Bind the package explicitly, never to a same-named global or target-project module.
     for name in list(sys.modules):
-        if name == "review_memory" or name.startswith("review_memory."):
+        if name == "repowise" or name.startswith("repowise."):
             del sys.modules[name]
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location(
-        "review_memory", package / "__init__.py", submodule_search_locations=[str(package)])
+        "repowise", package / "__init__.py", submodule_search_locations=[str(package)])
     module = importlib.util.module_from_spec(spec)
-    sys.modules["review_memory"] = module
+    sys.modules["repowise"] = module
     spec.loader.exec_module(module)
-    from review_memory.cli import main
+    from repowise.cli import main
     return main(argv)
 
 
@@ -263,7 +263,7 @@ def main(argv=None):
             env=clean_environment())
         return result.returncode
     except (LauncherError, OSError, UnicodeError) as exc:
-        print(f"review-memory: {exc}", file=sys.stderr)
+        print(f"repowise: {exc}", file=sys.stderr)
         return 2
 
 

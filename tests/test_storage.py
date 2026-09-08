@@ -5,8 +5,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from tests.test_core import knowledge
-from review_memory.common import Error, git, is_link, load_json, write_json
-from review_memory.storage import (
+from repowise.common import Error, git, is_link, load_json, write_json
+from repowise.storage import (
     initialize_project, project_config, project_storage, validate_memory_root,
 )
 
@@ -29,9 +29,9 @@ class StorageTests(unittest.TestCase):
     def test_default_location_is_persistent_user_data_and_resolution_is_read_only(self):
         home = self.directory / "user"
         with patch.dict(os.environ), patch("pathlib.Path.home", return_value=home):
-            os.environ.pop("REVIEW_MEMORY_HOME", None)
+            os.environ.pop("REPOWISE_HOME", None)
             storage = project_storage(self.target)
-        self.assertEqual(storage.data_home, home / ".review-memory" / "projects")
+        self.assertEqual(storage.data_home, home / ".repowise" / "projects")
         self.assertFalse(storage.storage_root.exists())
         self.assertFalse(home.exists())
 
@@ -80,7 +80,7 @@ class StorageTests(unittest.TestCase):
 
     def test_interrupted_initialization_can_resume_only_the_same_binding(self):
         storage = project_storage(self.target, self.home)
-        with patch("review_memory.core.initialize", side_effect=Error("interrupted")):
+        with patch("repowise.core.initialize", side_effect=Error("interrupted")):
             with self.assertRaisesRegex(Error, "interrupted"):
                 initialize_project(storage, "acme/project")
         with self.assertRaisesRegex(Error, "binding differs"):
@@ -97,11 +97,11 @@ class StorageTests(unittest.TestCase):
                 validate_memory_root(self.target, memory)
 
     def test_explicit_data_home_overrides_environment(self):
-        with patch.dict(os.environ, {"REVIEW_MEMORY_HOME": str(self.directory / "env-memory")}):
+        with patch.dict(os.environ, {"REPOWISE_HOME": str(self.directory / "env-memory")}):
             self.assertEqual(project_storage(self.target).data_home, self.directory / "env-memory")
             self.assertEqual(project_storage(self.target, self.home).data_home, self.home)
         for invalid in ("", "relative"):
-            with patch.dict(os.environ, {"REVIEW_MEMORY_HOME": invalid}), self.assertRaises(Error):
+            with patch.dict(os.environ, {"REPOWISE_HOME": invalid}), self.assertRaises(Error):
                 project_storage(self.target)
 
     def test_namespace_or_review_links_are_rejected(self):
@@ -124,10 +124,10 @@ class StorageTests(unittest.TestCase):
 
     def test_git_preserves_empty_environment_config_values(self):
         with patch.dict(os.environ, {
-            "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "reviewmemory.empty",
+            "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "repowise.empty",
             "GIT_CONFIG_VALUE_0": "",
         }):
-            self.assertEqual(git(self.target, "config", "--get", "reviewmemory.empty"), "")
+            self.assertEqual(git(self.target, "config", "--get", "repowise.empty"), "")
 
     def test_initialization_lock_is_not_silently_removed(self):
         storage = project_storage(self.target, self.home)

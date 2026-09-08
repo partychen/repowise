@@ -23,7 +23,7 @@ DEFAULT_CONFIG = {
     "raw_retention_days": 30,
 }
 KNOWLEDGE_STATES = {"candidate", "lesson", "approved", "needs_review", "deprecated", "archived"}
-NAMESPACE = "review-memory-v1"
+NAMESPACE = "repowise-v1"
 
 
 def _object(value, label):
@@ -82,7 +82,7 @@ def initialize(root: Path, repository: str) -> dict:
             atomic_write(signers, b"# Maintainer-managed OpenSSH allowed_signers; no keys are trusted by default.\n")
         write_json(safe_path(root, ".review/index.json"), {"schema_version": 1, "knowledge": [], "snapshot_hash": None})
         atomic_write(safe_path(root, ".review/memory.md"),
-                     b"# Review Memory\n\nNo approved knowledge. Reference packs are not repository policy.\n")
+                     b"# RepoWise\n\nNo approved knowledge. Reference packs are not repository policy.\n")
     return {"status": "initialized", "repository": repository, "approval": "SSH signature required; no trusted signers configured"}
 
 
@@ -215,7 +215,7 @@ def verify_signature(payload: dict, signature: str, signers: str, *, root: Path)
         raise Error("Unknown approval signature namespace.")
     cache = safe_path(root, ".review/local/cache")
     cache.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="review_memory-verify-", dir=cache) as directory:
+    with tempfile.TemporaryDirectory(prefix="repowise-verify-", dir=cache) as directory:
         directory = Path(directory)
         signature_file, signers_file = directory / "signature", directory / "allowed_signers"
         signature_file.write_text(signature, encoding="utf-8")
@@ -367,7 +367,7 @@ def render_snapshot(root: Path, trusted_ref: str) -> dict:
     snapshot = load_git_snapshot(root, trusted_ref)
     with lock(root):
         write_json(safe_path(root, ".review/index.json"), snapshot)
-        lines = ["# Review Memory", "", f"Approved snapshot: `{snapshot['hash']}`", "",
+        lines = ["# RepoWise", "", f"Approved snapshot: `{snapshot['hash']}`", "",
                  "Advisory review only; not a proof of program correctness.", ""]
         for item in snapshot["knowledge"]:
             lines.extend([f"## {item['id']} r{item['revision']}: {item['title']}", "",

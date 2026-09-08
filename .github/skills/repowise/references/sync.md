@@ -19,7 +19,7 @@ python -I $Runner --root $Target sync --repository owner/repo
 
 The first sync initializes external project memory and saves its repository/path
 binding. Read `storage_root` and `local_path` from the response; the default is
-`~\.review-memory\projects\<name>-<path-hash>`. Nothing is created in the target
+`~\.repowise\projects\<name>-<path-hash>`. Nothing is created in the target
 checkout, and any old target `.review` is ignored and left untouched.
 Later calls use `sync` without `--repository`. A conflicting repository is rejected.
 The default scope is all merged PR history; each command collects at most 20 PRs.

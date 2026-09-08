@@ -3,9 +3,9 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".github" / "skills" /
-                       "review-memory" / "scripts"))
+                       "repowise" / "scripts"))
 
-from review_memory.detectors import TOOL_ID, dependency_edges, forbidden_dependency
+from repowise.detectors import TOOL_ID, dependency_edges, forbidden_dependency
 
 
 DETECTOR = {"id": "D-deps-001", "revision": 1, "tool_id": TOOL_ID,

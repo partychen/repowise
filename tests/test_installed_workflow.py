@@ -15,23 +15,23 @@ from tests.test_core import knowledge
 PROJECT = Path(__file__).resolve().parents[1]
 
 
-@unittest.skipUnless(os.environ.get("REVIEW_MEMORY_TEST_INSTALL") == "1",
-                     "Set REVIEW_MEMORY_TEST_INSTALL=1 to exercise npx installation and dependency setup.")
+@unittest.skipUnless(os.environ.get("REPOWISE_TEST_INSTALL") == "1",
+                     "Set REPOWISE_TEST_INSTALL=1 to exercise npx installation and dependency setup.")
 class InstalledWorkflowTests(unittest.TestCase):
     def test_npx_install_move_sync_induce_and_resume(self):
         npx = shutil.which("npx.cmd" if os.name == "nt" else "npx")
         self.assertIsNotNone(npx, "Node.js/npx is required for the installer smoke.")
-        with tempfile.TemporaryDirectory(prefix="review memory install ") as temporary:
+        with tempfile.TemporaryDirectory(prefix="repowise install ") as temporary:
             root = Path(temporary).resolve()
             installation = root / "installation project"
             target = root / "learning project"
             installation.mkdir()
             target.mkdir()
             env = {**os.environ, "CI": "1", "DISABLE_TELEMETRY": "1", "DO_NOT_TRACK": "1",
-                   "REVIEW_MEMORY_CACHE": str(root / "runtime cache"),
-                   "REVIEW_MEMORY_HOME": str(root / "project memory")}
+                   "REPOWISE_CACHE": str(root / "runtime cache"),
+                   "REPOWISE_HOME": str(root / "project memory")}
             result = subprocess.run(
-                [npx, "--yes", "skills", "add", str(PROJECT), "--skill", "review-memory",
+                [npx, "--yes", "skills", "add", str(PROJECT), "--skill", "repowise",
                  "--agent", "github-copilot", "--copy", "--yes"],
                 cwd=installation, env=env, capture_output=True, text=True, encoding="utf-8",
                 errors="replace", timeout=300,
@@ -39,9 +39,9 @@ class InstalledWorkflowTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             matches = list(installation.rglob("SKILL.md"))
             self.assertTrue(matches, result.stdout)
-            skill = next(path.parent for path in matches if path.parent.name == "review-memory")
+            skill = next(path.parent for path in matches if path.parent.name == "repowise")
             self.assertTrue((skill / "requirements.txt").is_file())
-            self.assertTrue((skill / "scripts" / "review_memory" / "sync.py").is_file())
+            self.assertTrue((skill / "scripts" / "repowise" / "sync.py").is_file())
             provenance = json.loads((skill / "wheels" / "provenance.json").read_text(encoding="utf-8"))
             self.assertTrue((skill / "wheels" / provenance["wheel"]["filename"]).is_file())
             self.assertTrue((skill / "wheels" / "LICENSE.PyYAML.txt").is_file())
@@ -49,7 +49,7 @@ class InstalledWorkflowTests(unittest.TestCase):
             shutil.copytree(skill, moved)
             shutil.rmtree(installation)
             runner = moved / "scripts" / "main.py"
-            (target / "review_memory.py").write_text('raise RuntimeError("Untrusted target import")')
+            (target / "repowise.py").write_text('raise RuntimeError("Untrusted target import")')
             (target / ".gitignore").write_text("existing-ignore-pattern\n")
             target_before = {p.relative_to(target): p.read_bytes()
                              for p in target.rglob("*") if p.is_file()}

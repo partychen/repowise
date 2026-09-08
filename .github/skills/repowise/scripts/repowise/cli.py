@@ -15,14 +15,14 @@ from .storage import initialize_project, project_config, project_storage
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
-        prog="review-memory",
+        prog="repowise",
         description="Accumulate project knowledge, review PRs, and guide authorized host feature implementation.",
     )
     result.add_argument("--version", action="version", version=__version__)
     result.add_argument("--root", type=Path, default=Path.cwd(), help="Target repository; defaults to current directory.")
     result.add_argument("--data-home", type=Path,
-                        help="External project-data parent directory; defaults to REVIEW_MEMORY_HOME "
-                             "or ~/.review-memory/projects. Never inside the target or Skill.")
+                        help="External project-data parent directory; defaults to REPOWISE_HOME "
+                             "or ~/.repowise/projects. Never inside the target or Skill.")
     commands = result.add_subparsers(dest="command", required=True)
     init = commands.add_parser("init", help="Create external project memory without modifying the target repository.")
     init.add_argument("--repository", required=True)

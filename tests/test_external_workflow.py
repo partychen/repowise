@@ -10,9 +10,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.test_core import knowledge
-from review_memory.cli import main
-from review_memory.common import utcnow
-from review_memory.review_contract import REPOSITORY_DIMENSIONS
+from repowise.cli import main
+from repowise.common import utcnow
+from repowise.review_contract import REPOSITORY_DIMENSIONS
 
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -96,7 +96,7 @@ class ExternalWorkflowTests(unittest.TestCase):
                 "tester " + key.with_suffix(".pub").read_text(), encoding="utf-8")
             request = Path(prepared["request"])
             subprocess.run(
-                ["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "review-memory-v1", str(request)],
+                ["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "repowise-v1", str(request)],
                 capture_output=True, check=True,
             )
             invoke("approve", "--request", str(request), "--signature", str(request) + ".sig")
@@ -115,7 +115,7 @@ class ExternalWorkflowTests(unittest.TestCase):
                 adapter.store.record(f"repos/example/project/pulls/{number}", metadata)
                 return metadata
 
-            with patch("review_memory.pull_requests._GitHub.pr", autospec=True, side_effect=pr_metadata):
+            with patch("repowise.pull_requests._GitHub.pr", autospec=True, side_effect=pr_metadata):
                 review = invoke("review", "--pr", "https://github.com/example/project/pull/1",
                                 "--trusted-ref", policy, "--context-path", "src\\lib.rs")
             self.assertTrue(review["requires_response"])

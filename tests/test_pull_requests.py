@@ -4,9 +4,9 @@ import unittest
 from unittest.mock import patch
 
 from tests.test_core import file_tree, fixture_directory, git_command, initialize_git
-from review_memory.common import Error, load_json
-from review_memory.core import initialize
-from review_memory.pull_requests import pull_request_number, resolve_pull_request
+from repowise.common import Error, load_json
+from repowise.core import initialize
+from repowise.pull_requests import pull_request_number, resolve_pull_request
 
 
 class PullRequestTests(unittest.TestCase):
@@ -36,7 +36,7 @@ class PullRequestTests(unittest.TestCase):
         def get(adapter, number):
             adapter.store.record(f"repos/example/project/pulls/{number}", self.metadata)
             return copy.deepcopy(self.metadata)
-        with patch("review_memory.pull_requests._GitHub.pr", autospec=True, side_effect=get):
+        with patch("repowise.pull_requests._GitHub.pr", autospec=True, side_effect=get):
             return resolve_pull_request(self.target, self.memory, "example/project", value)
 
     def test_numbers_and_urls_are_bound_to_the_selected_repository(self):

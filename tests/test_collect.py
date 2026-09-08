@@ -13,8 +13,8 @@ import uuid
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / ".github" / "skills" / "review-memory" / "scripts"))
-collect = importlib.import_module("review_memory.collect")
+sys.path.insert(0, str(ROOT / ".github" / "skills" / "repowise" / "scripts"))
+collect = importlib.import_module("repowise.collect")
 
 
 class CollectionTests(unittest.TestCase):

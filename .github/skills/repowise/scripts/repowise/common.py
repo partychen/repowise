@@ -119,7 +119,7 @@ def safe_path(root: Path, relative: str | Path) -> Path:
 
 def atomic_write(path: Path, data: bytes):
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".review_memory-", dir=path.parent)
+    fd, temporary = tempfile.mkstemp(prefix=".repowise-", dir=path.parent)
     try:
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)

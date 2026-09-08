@@ -8,11 +8,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.test_core import knowledge
-from review_memory import collect
-from review_memory.cli import main
-from review_memory.common import Error, load_json, write_json
-from review_memory.propose import propose
-from review_memory.sync import project_status, sync_project
+from repowise import collect
+from repowise.cli import main
+from repowise.common import Error, load_json, write_json
+from repowise.propose import propose
+from repowise.sync import project_status, sync_project
 
 
 class SyncTests(unittest.TestCase):

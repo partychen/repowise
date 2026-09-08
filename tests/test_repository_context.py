@@ -4,9 +4,9 @@ from pathlib import PurePosixPath
 from unittest.mock import patch
 
 from tests.test_core import file_tree, fixture_directory, git_command, initialize_git
-from review_memory import repository_context
-from review_memory.common import Error
-from review_memory.repository_context import _added_lines, _path, _source_lines, capture_context
+from repowise import repository_context
+from repowise.common import Error
+from repowise.repository_context import _added_lines, _path, _source_lines, capture_context
 
 
 class RepositoryContextTests(unittest.TestCase):

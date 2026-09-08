@@ -84,13 +84,13 @@ def project_storage(target_root: Path, data_home: Path | None = None) -> Project
     if not target.is_dir():
         raise Error("Target root must be an existing directory.")
     if data_home is None:
-        override = os.environ.get("REVIEW_MEMORY_HOME")
+        override = os.environ.get("REPOWISE_HOME")
         if override is not None and not override.strip():
-            raise Error("REVIEW_MEMORY_HOME must be a nonempty absolute path.")
-        data_home = Path(override) if override is not None else Path.home() / ".review-memory" / "projects"
+            raise Error("REPOWISE_HOME must be a nonempty absolute path.")
+        data_home = Path(override) if override is not None else Path.home() / ".repowise" / "projects"
     home = Path(data_home).expanduser()
     if not home.is_absolute():
-        raise Error("--data-home / REVIEW_MEMORY_HOME must be an absolute path.")
+        raise Error("--data-home / REPOWISE_HOME must be an absolute path.")
     home = home.resolve()
     if home.is_relative_to(target) or any(home.is_relative_to(path) for path in _protected_roots()):
         raise Error("The data home must be outside the target repository and installed Skill/source.")

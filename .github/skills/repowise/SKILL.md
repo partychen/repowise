@@ -1,9 +1,9 @@
 ---
-name: review-memory
+name: repowise
 description: Accumulate evidence-backed project knowledge, review GitHub PRs, and help implement or complete feature PRs using existing repository architecture, frameworks, conventions and approved lessons. Feature coding and checks require explicit host-user authorization. Also supports project onboarding, resumable learning and replay; not general Rust questions.
 ---
 
-# Review Memory
+# RepoWise
 
 Accumulate project knowledge, review PRs, and guide user-authorized feature
 implementation using that same repository's experience and engineering context.
@@ -114,13 +114,13 @@ Finish with the accumulated knowledge index, not just collection task paths.
 ## Command convention
 
 All examples use the derived `$Runner` and selected `$Target` above. No global
-review-memory package or separate wheel installation is needed. `-I` isolates
+repowise package or separate wheel installation is needed. `-I` isolates
 Python imports; the launcher selects this Skill's bundled code and dependencies.
 The target must not supply executable code or Python environment configuration.
 Project commands return `storage_root` and `local_path`; resolve emitted relative
 paths against `storage_root`, never `$Target`. Default storage is
-`~\.review-memory\projects\<name>-<path-hash>`; an explicit `--data-home` or
-`REVIEW_MEMORY_HOME` can select another external parent directory.
+`~\.repowise\projects\<name>-<path-hash>`; an explicit `--data-home` or
+`REPOWISE_HOME` can select another external parent directory.
 Subsequent `sync` calls omit `--repository`, using the project's saved binding.
 Only a later approved review needs the trusted policy commit; learning does not.
 

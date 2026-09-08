@@ -4,9 +4,9 @@ import unittest
 from pathlib import Path
 
 from tests.test_core import knowledge
-from review_memory.common import Error, digest, load_json, write_json
-from review_memory.core import initialize
-from review_memory.propose import propose
+from repowise.common import Error, digest, load_json, write_json
+from repowise.core import initialize
+from repowise.propose import propose
 
 
 class ProposalTests(unittest.TestCase):

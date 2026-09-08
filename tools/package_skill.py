@@ -31,7 +31,7 @@ def build_archive(project: Path, output: Path) -> dict:
     version = metadata["project"]["version"]
     if not isinstance(version, str) or not re.fullmatch(r"[0-9A-Za-z.+-]+", version):
         raise ValueError("Version cannot be used as a release filename.")
-    skill = project / ".github" / "skills" / "review-memory"
+    skill = project / ".github" / "skills" / "repowise"
     provenance_path = skill / "wheels" / "provenance.json"
     provenance_content = source_bytes(skill, provenance_path)
     provenance = json.loads(provenance_content)
@@ -47,28 +47,28 @@ def build_archive(project: Path, output: Path) -> dict:
         raise ValueError("Bundled dependency must be the pinned pure-Python PyYAML wheel with MIT provenance.")
     required = [skill / "SKILL.md", skill / "requirements.txt",
                 skill / "scripts" / "main.py", skill / "packs" / "__init__.py",
-                skill / "scripts" / "review_memory" / "__init__.py",
-                skill / "scripts" / "review_memory" / "cli.py",
-                skill / "scripts" / "review_memory" / "storage.py",
-                skill / "scripts" / "review_memory" / "approvals.py",
-                skill / "scripts" / "review_memory" / "repository_context.py",
-                skill / "scripts" / "review_memory" / "review_contract.py",
-                skill / "scripts" / "review_memory" / "feature.py",
-                skill / "scripts" / "review_memory" / "pull_requests.py",
+                skill / "scripts" / "repowise" / "__init__.py",
+                skill / "scripts" / "repowise" / "cli.py",
+                skill / "scripts" / "repowise" / "storage.py",
+                skill / "scripts" / "repowise" / "approvals.py",
+                skill / "scripts" / "repowise" / "repository_context.py",
+                skill / "scripts" / "repowise" / "review_contract.py",
+                skill / "scripts" / "repowise" / "feature.py",
+                skill / "scripts" / "repowise" / "pull_requests.py",
                 skill / "references" / "feature.md",
                 provenance_path, skill / "wheels" / "LICENSE.PyYAML.txt",
                 skill / "wheels" / wheel["filename"]]
     paths = list(required)
-    for pattern in ("references/*.md", "packs/*.json", "packs/sources/*.json", "scripts/review_memory/*.py"):
+    for pattern in ("references/*.md", "packs/*.json", "packs/sources/*.json", "scripts/repowise/*.py"):
         paths.extend(skill.glob(pattern))
     members = {}
     for source in sorted(set(paths)):
         relative = source.relative_to(skill)
-        members["review-memory/" + relative.as_posix()] = (
+        members["repowise/" + relative.as_posix()] = (
             provenance_content if source == provenance_path else source_bytes(skill, source))
-    if hashlib.sha256(members["review-memory/wheels/" + wheel["filename"]]).hexdigest() != wheel["sha256"]:
+    if hashlib.sha256(members["repowise/wheels/" + wheel["filename"]]).hexdigest() != wheel["sha256"]:
         raise ValueError("Bundled dependency hash differs from its recorded provenance.")
-    requirements = members["review-memory/requirements.txt"].decode("utf-8").splitlines()
+    requirements = members["repowise/requirements.txt"].decode("utf-8").splitlines()
     declared = [line.strip() for line in requirements if line.strip() and not line.lstrip().startswith("#")]
     if declared != [f"PyYAML=={provenance['version']} --hash=sha256:{wheel['sha256']}"]:
         raise ValueError("Bundled dependency version/hash differs from requirements.txt.")
@@ -81,7 +81,7 @@ def build_archive(project: Path, output: Path) -> dict:
             info.external_attr = 0o100644 << 16
             archive.writestr(info, content)
     payload = buffer.getvalue()
-    filename = f"review-memory-skill-{version}.zip"
+    filename = f"repowise-skill-{version}.zip"
     sha256 = hashlib.sha256(payload).hexdigest()
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)

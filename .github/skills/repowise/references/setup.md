@@ -17,16 +17,16 @@ Install the Skill with the standard skills CLI (this is the publishing repositor
 not the project to learn):
 
 ```powershell
-npx skills add partychen/review-memory --skill review-memory -a github-copilot -g
+npx skills add partychen/repowise --skill repowise -a github-copilot -g
 ```
 
 For an unpublished local source checkout, run from that checkout root:
 
 ```powershell
-npx skills add . --skill review-memory -a github-copilot -g --copy
+npx skills add . --skill repowise -a github-copilot -g --copy
 ```
 
-No separate review-memory wheel or global pip install is needed. The installer
+No separate repowise wheel or global pip install is needed. The installer
 copies/links Skill files; it does not invoke Python setup or sync automatically.
 The host resolves `$SkillRoot` from the absolute location of this installed
 SKILL.md (or its supplied Skill base directory). Never guess it from project cwd.
@@ -93,13 +93,13 @@ re-approval even if the tool's source files are unchanged.
 `--root` selects target code that the CLI only reads. Separately authorized host
 feature tools may edit that workspace. `doctor`, `sync`, `status` and other
 project commands return `storage_root`, `local_path`, `data_home` and `project_id`.
-The default is `~\.review-memory\projects\<name>-<path-hash>`, with `.review`
+The default is `~\.repowise\projects\<name>-<path-hash>`, with `.review`
 under that external storage root. The normalized target path determines its
 identity; a separate binding checks the selected GitHub repository.
 Do not guess a directory from the repository name or Skill installation path.
 
 To choose another absolute external parent directory, put `--data-home PATH`
-before the command, or configure `REVIEW_MEMORY_HOME` in the host environment.
+before the command, or configure `REPOWISE_HOME` in the host environment.
 It must not be inside the target or the installed Skill/source. No command
 creates target `.review`, modifies target ignores, or imports old target state.
 This pre-release has no migration or in-repository storage mode.

@@ -7,9 +7,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.test_core import knowledge
-from review_memory.cli import main, parser
-from review_memory.common import Error
-from review_memory.packs import list_packs, select_packs
+from repowise.cli import main, parser
+from repowise.common import Error
+from repowise.packs import list_packs, select_packs
 
 
 class CliTests(unittest.TestCase):
@@ -64,7 +64,7 @@ class CliTests(unittest.TestCase):
     def test_fixture_progress_never_suggests_an_unqualified_live_sync(self):
         result = {"remaining_pr_count": 1, "pending_task_count": 0, "knowledge_count": 0}
         with tempfile.TemporaryDirectory() as directory, \
-                patch("review_memory.sync.sync_project", return_value=result):
+                patch("repowise.sync.sync_project", return_value=result):
             code, out, error = self.call([
                 "--root", directory, "sync", "--repository", "example/project",
                 "--fixture", str(Path(directory) / "synthetic.json"),
@@ -73,12 +73,12 @@ class CliTests(unittest.TestCase):
             self.assertEqual(json.loads(out)["next_actions"], [])
 
     def test_partial_result_not_success_exit(self):
-        with patch("review_memory.cli.dispatch", return_value={"status": "partial", "complete": False}):
+        with patch("repowise.cli.dispatch", return_value={"status": "partial", "complete": False}):
             self.assertEqual(self.call(["doctor"])[0], 2)
 
     def test_learning_gaps_cannot_be_hidden_by_completed_collection(self):
         with tempfile.TemporaryDirectory() as directory, patch(
-                "review_memory.sync.sync_project",
+                "repowise.sync.sync_project",
                 return_value={"status": "complete", "complete": True, "learning_gap_count": 1,
                               "knowledge_count": 0, "pending_task_count": 0}):
             code, out, error = self.call([
@@ -99,7 +99,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(500000, args.max_bytes)
 
     def test_expected_error_is_json(self):
-        with patch("review_memory.cli.dispatch", side_effect=Error("Invalid input")):
+        with patch("repowise.cli.dispatch", side_effect=Error("Invalid input")):
             code, out, err = self.call(["doctor"])
             self.assertEqual(code, 2)
             self.assertEqual(out, "")

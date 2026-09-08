@@ -1,1 +1,1 @@
-"""Regression tests for the review-memory skill."""
+"""Regression tests for the repowise skill."""

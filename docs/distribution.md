@@ -7,10 +7,10 @@ English | [Simplified Chinese](distribution.zh.md)
 Install through the [skills CLI](https://github.com/vercel-labs/skills):
 
 ```powershell
-npx skills add partychen/review-memory --skill review-memory -a github-copilot -g
+npx skills add partychen/repowise --skill repowise -a github-copilot -g
 ```
 
-`partychen/review-memory` is the skill repository, not your learning target.
+`partychen/repowise` is the skill repository, not your learning target.
 Choose another `-a` value for a different host. Keep `-g` for personal installation:
 project-scoped installation itself adds Skill files to the project, even though
 runtime commands keep all knowledge outside it.
@@ -20,12 +20,12 @@ skill directory rather than assuming a particular project path.
 In your target project's assistant session:
 
 ```text
-Use review-memory to sync acme/my-project's PR reviews and accumulate project knowledge.
+Use repowise to sync acme/my-project's PR reviews and accumulate project knowledge.
 ```
 
 The host prepares isolated Python dependencies, binds the target, collects merged
 PRs, extracts evidence-backed candidates, and updates the knowledge index.
-Subsequent requests resume saved work. No separate review-memory wheel or model API
+Subsequent requests resume saved work. No separate repowise wheel or model API
 key is required.
 
 The installation command only installs files; it does not run sync or start a
@@ -38,7 +38,7 @@ permissions. Downloading the Skill and syncing GitHub still require network acce
 From the source root:
 
 ```powershell
-npx skills add . --skill review-memory -a github-copilot -g --copy
+npx skills add . --skill repowise -a github-copilot -g --copy
 ```
 
 Inspect any existing same-named installation before replacing it. Developers can
@@ -48,7 +48,7 @@ that editable package.
 ## Self-contained resources
 
 ```text
-review-memory\
+repowise\
   SKILL.md
   requirements.txt
   wheels\
@@ -57,7 +57,7 @@ review-memory\
     provenance.json
   scripts\
     main.py
-    review_memory\
+    repowise\
   references\
   packs\
 ```
@@ -85,14 +85,14 @@ confirming no setup process is active. Do not erase project knowledge or weaken 
 
 ## Independent project data
 
-The default storage root is `~\.review-memory\projects\<name>-<path-hash>`.
+The default storage root is `~\.repowise\projects\<name>-<path-hash>`.
 Project commands return its absolute `storage_root` and private `local_path`.
 Neither the target checkout nor the Skill installation holds project state.
 The namespace uses the canonical local target path, with a separately validated
 GitHub repository binding. Same directory names at different paths stay isolated.
 
 Use the global CLI option `--data-home ABSOLUTE_PATH` before a command, or the
-host environment variable `REVIEW_MEMORY_HOME`, to select another external parent.
+host environment variable `REPOWISE_HOME`, to select another external parent.
 It must be outside the target and Skill/source. The dependency runtime cache is
 separate from this durable knowledge directory.
 
@@ -127,14 +127,14 @@ edits and checks, then records its reported outcome with `feature-finish`.
 
 `approval-queue` produces a readable candidate handoff and `prepare-approval`
 prepares a selected unsigned request. These do not sign, grant trust or commit.
-See the [approval workflow](../.github/skills/review-memory/references/approval.md).
+See the [approval workflow](../.github/skills/repowise/references/approval.md).
 Never publish private local memory as part of a Skill release. Runtime changes
 invalidate approval bindings and require maintainer reapproval rather than a bypass.
 
 ## Distribution
 
-The repository is [partychen/review-memory](https://github.com/partychen/review-memory).
-Keep `.github/skills/review-memory` discoverable by the skills CLI. Installing from
+The repository is [partychen/repowise](https://github.com/partychen/repowise).
+Keep `.github/skills/repowise` discoverable by the skills CLI. Installing from
 the repository requires neither an npm package nor a PyPI release.
 
 To produce optional release attachments:
@@ -147,7 +147,7 @@ python -m pip wheel . --no-deps --wheel-dir .\dist
 
 The skill ZIP and checksum use the version from `pyproject.toml`. The ZIP contains
 only explicitly listed resources, excluding virtual environments and private data.
-Its entire `review-memory` folder can also be installed manually in a host-supported
+Its entire `repowise` folder can also be installed manually in a host-supported
 skill directory.
 
 Repository/npx installs, source distributions, and Skill ZIPs must all include the

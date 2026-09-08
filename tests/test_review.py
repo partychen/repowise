@@ -7,13 +7,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / ".github" / "skills" /
-                       "review-memory" / "scripts"))
+                       "repowise" / "scripts"))
 
-from review_memory.common import Error, digest, load_json, write_json
-from review_memory.core import initialize, load_git_snapshot
-from review_memory.detectors import TOOL_ID
-from review_memory.render import publish, render_html
-from review_memory.review import _added_lines, _source_lines, finalize_review, prepare_review
+from repowise.common import Error, digest, load_json, write_json
+from repowise.core import initialize, load_git_snapshot
+from repowise.detectors import TOOL_ID
+from repowise.render import publish, render_html
+from repowise.review import _added_lines, _source_lines, finalize_review, prepare_review
 from tests.test_core import file_tree, fixture_directory, git_command, initialize_git
 
 
@@ -45,7 +45,7 @@ class ReviewTests(unittest.TestCase):
                          "detectors": [], "manifest": {"coverage_gaps": []},
                          "config": {"repository": "owner/repo", "max_rules_per_run": 50,
                                     "max_findings_per_pr": 10}}
-        self.loader = patch("review_memory.core.load_git_snapshot", side_effect=lambda *a, **k: self.snapshot)
+        self.loader = patch("repowise.core.load_git_snapshot", side_effect=lambda *a, **k: self.snapshot)
         self.load = self.loader.start()
         self.addCleanup(self.loader.stop)
 
@@ -106,8 +106,8 @@ class ReviewTests(unittest.TestCase):
         self.assertIn("uncommitted", (self.root / "source file.py").read_text())
 
     def test_every_git_read_in_preparation_disables_mutable_object_behavior(self):
-        from review_memory import common
-        with patch("review_memory.common.subprocess.run", wraps=common.subprocess.run) as calls:
+        from repowise import common
+        with patch("repowise.common.subprocess.run", wraps=common.subprocess.run) as calls:
             self.prepare()
         commands = [call.args[0] for call in calls.call_args_list if call.args[0][0] == "git"]
         self.assertTrue(any("rev-parse" in command for command in commands))
@@ -178,7 +178,7 @@ class ReviewTests(unittest.TestCase):
         self.assertTrue(any("Missing semantic assessment" in gap for gap in report["coverage_gaps"]))
 
     def test_repository_first_contract_and_missing_dimensions_are_visible(self):
-        from review_memory.review_contract import REPOSITORY_DIMENSIONS
+        from repowise.review_contract import REPOSITORY_DIMENSIONS
         prepared = self.prepare()
         task = prepared["task"]
         self.assertEqual(2, task["schema_version"])
@@ -259,7 +259,7 @@ class ReviewTests(unittest.TestCase):
         response["findings"][0]["knowledge_id"] = pack["id"]
         with self.assertRaisesRegex(Error, "Unknown or stale"):
             self.finalize(prepared, response)
-        with patch("review_memory.packs.select_packs", side_effect=AssertionError("Do not reload mutable references")):
+        with patch("repowise.packs.select_packs", side_effect=AssertionError("Do not reload mutable references")):
             report = self.finalize(prepared, self.response(prepared, findings=False))
         self.assertEqual(pack["content_hash"], report["external_references"][0]["content_hash"])
 
@@ -268,13 +268,13 @@ class ReviewTests(unittest.TestCase):
             self.prepare(at="2025-01-01T00:00:00Z", reference_query="Rust ownership")
 
     def test_reference_budget_reports_omitted_packs(self):
-        from review_memory.packs import list_packs
+        from repowise.packs import list_packs
         oversized = copy.deepcopy(list_packs()[0])
         oversized["summary"] = "x" * 64001
         oversized["content_hash"] = digest(oversized)
         selection = {"authority": "reference", "query": "Rust", "packs": [oversized],
                      "matched_count": 1, "omitted_count": 0}
-        with patch("review_memory.packs.select_packs", return_value=selection):
+        with patch("repowise.packs.select_packs", return_value=selection):
             prepared = self.prepare(reference_query="Rust")
         self.assertEqual([], prepared["task"]["reference_packs"])
         self.assertEqual(1, prepared["task"]["reference_selection"]["budget_omitted_count"])

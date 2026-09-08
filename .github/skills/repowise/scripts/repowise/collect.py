@@ -1,8 +1,8 @@
-"""Read-only GitHub collection for review-memory SPEC v0.2.
+"""Read-only GitHub collection for repowise SPEC v0.2.
 
-Offline fixture schema ``review-memory.collection-fixture.v1``::
+Offline fixture schema ``repowise.collection-fixture.v1``::
 
-    {"schema_version": "review-memory.collection-fixture.v1",
+    {"schema_version": "repowise.collection-fixture.v1",
      "repository": "owner/name",
      "prs": [{"number": 1, "created_at": "...", "merged_at": "...",
               "reviews": [], "comments": [], "issue_comments": [],
@@ -41,9 +41,9 @@ import uuid
 from .common import Error, digest, load_json, lock, safe_path, utcnow, write_json
 
 
-FIXTURE_SCHEMA = "review-memory.collection-fixture.v1"
-EVIDENCE_SCHEMA = "review-memory.evidence.v0.2"
-TASK_SCHEMA = "review-memory.learning-task.v0.2"
+FIXTURE_SCHEMA = "repowise.collection-fixture.v1"
+EVIDENCE_SCHEMA = "repowise.evidence.v0.2"
+TASK_SCHEMA = "repowise.learning-task.v0.2"
 API_VERSION = "2022-11-28"
 MAX_PAGES = 100
 PAGE_SIZE = 100
@@ -245,7 +245,7 @@ class _Store:
         record_id = digest({"repository": self.repository, "endpoint": endpoint,
                             "body": body, "offline": offline})
         record = {
-            "schema_version": "review-memory.raw.v0.2",
+            "schema_version": "repowise.raw.v0.2",
             "repository": self.repository,
             "endpoint": endpoint,
             "observed_at": utcnow(),
@@ -672,7 +672,7 @@ def _run(root: Path, repository: str, fixture: Path | None, operation: str,
         store = _Store(root, repository)
         run_id = f"{operation}-{uuid.uuid4().hex}"
         run_relative = f".review/local/runs/{run_id}.json"
-        run = {"schema_version": "review-memory.collection-run.v0.2",
+        run = {"schema_version": "repowise.collection-run.v0.2",
                "run_id": run_id, "operation": operation, "repository": repository,
                "started_at": utcnow(), "status": "running", "complete": False,
                "fixture_schema": FIXTURE_SCHEMA if fixture is not None else None,
@@ -710,7 +710,7 @@ def _run(root: Path, repository: str, fixture: Path | None, operation: str,
             try:
                 state_path = safe_path(root, ".review/local/state/collection.json")
                 state = load_json(state_path) if state_path.exists() else {
-                    "schema_version": "review-memory.collection-state.v0.2", "repositories": {}}
+                    "schema_version": "repowise.collection-state.v0.2", "repositories": {}}
                 if not isinstance(state, dict) or not isinstance(state.get("repositories"), dict):
                     raise Error("invalid collection state")
                 repo_state = state["repositories"].setdefault(repository, {})

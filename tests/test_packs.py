@@ -3,8 +3,8 @@ import unittest
 from unittest.mock import patch
 
 from tests import test_core
-from review_memory.common import Error, digest
-from review_memory.packs import list_packs, select_packs, source_inventory, validate_pack
+from repowise.common import Error, digest
+from repowise.packs import list_packs, select_packs, source_inventory, validate_pack
 
 
 class PackTests(unittest.TestCase):
@@ -52,7 +52,7 @@ class PackTests(unittest.TestCase):
     def test_short_tags_are_not_arbitrary_substring_matches(self):
         pack = copy.deepcopy(list_packs()[0])
         pack.update(id="rust-sample", title="Sample", summary="Sample reference.", tags=["ml", "cli", "rust"])
-        with patch("review_memory.packs.list_packs", return_value=[pack]):
+        with patch("repowise.packs.list_packs", return_value=[pack]):
             self.assertEqual([], select_packs("HTML client")["packs"])
             self.assertEqual([], select_packs("Rust completely-unmatched-topic")["packs"])
             self.assertEqual(1, len(select_packs("ML")["packs"]))

@@ -3,19 +3,19 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "review-memory"
+name = "repowise"
 version = "0.0.1"
-description = "Evidence-backed, human-approved repository review knowledge"
+description = "RepoWise: project knowledge for PR review and authorized feature implementation"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["PyYAML>=6.0.2,<7"]
 
 [project.scripts]
-review-memory = "review_memory.cli:main"
+repowise = "repowise.cli:main"
 
 [tool.setuptools]
-packages = ["review_memory", "review_memory_packs"]
-package-dir = {review_memory = ".github/skills/review-memory/scripts/review_memory", review_memory_packs = ".github/skills/review-memory/packs"}
+packages = ["repowise", "repowise_packs"]
+package-dir = {repowise = ".github/skills/repowise/scripts/repowise", repowise_packs = ".github/skills/repowise/packs"}
 
 [tool.setuptools.package-data]
-review_memory_packs = ["*.json", "sources/*.json"]
+repowise_packs = ["*.json", "sources/*.json"]

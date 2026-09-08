@@ -12,7 +12,7 @@ from .common import Error, digest, load_json
 def _directory() -> Path:
     directory = Path(__file__).resolve().parents[2] / "packs"
     if not directory.is_dir():
-        directory = Path(str(files("review_memory_packs")))
+        directory = Path(str(files("repowise_packs")))
     return directory
 
 

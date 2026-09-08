@@ -10,11 +10,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 PROJECT = Path(__file__).resolve().parents[1]
-SKILL = PROJECT / ".github" / "skills" / "review-memory"
+SKILL = PROJECT / ".github" / "skills" / "repowise"
 sys.path.insert(0, str(SKILL / "scripts"))
 
-from review_memory.common import Error, canonical_bytes, digest, load_json, load_yaml, parse_yaml, runtime_info, safe_path, write_yaml
-from review_memory.core import (
+from repowise.common import Error, canonical_bytes, digest, load_json, load_yaml, parse_yaml, runtime_info, safe_path, write_yaml
+from repowise.core import (
     NAMESPACE, approval_request, approve, initialize, load_git_snapshot,
     render_snapshot, validate_knowledge, verify_signature,
 )
@@ -22,9 +22,9 @@ from review_memory.core import (
 
 @contextlib.contextmanager
 def fixture_directory():
-    with tempfile.TemporaryDirectory(prefix=".test-review-memory-", dir=PROJECT) as directory:
+    with tempfile.TemporaryDirectory(prefix=".test-repowise-", dir=PROJECT) as directory:
         # Disposable sibling repositories stay project-local; the real Skill remains protected.
-        with patch("review_memory.storage._protected_roots", return_value=[SKILL]):
+        with patch("repowise.storage._protected_roots", return_value=[SKILL]):
             yield Path(directory).resolve()
 
 
@@ -135,7 +135,7 @@ class CoreTests(unittest.TestCase):
         write_yaml(candidate, knowledge())
         result = approval_request(self.root, candidate, "knowledge", "tester", "Synthetic test approval only")
         request = Path(result["request"])
-        subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "review-memory-v1", str(request)],
+        subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "repowise-v1", str(request)],
                        capture_output=True, check=True)
         before = file_tree(self.target)
         approved = approve(self.root, request, Path(str(request) + ".sig"))
@@ -158,7 +158,7 @@ class CoreTests(unittest.TestCase):
         suspended.update(revision=2, maturity="needs_review")
         write_yaml(candidate, suspended)
         revision_request = Path(approval_request(self.root, candidate, "knowledge", "tester", "Counterexample requires review")["request"])
-        subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "review-memory-v1", str(revision_request)],
+        subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "repowise-v1", str(revision_request)],
                        capture_output=True, check=True)
         approve(self.root, revision_request, Path(str(revision_request) + ".sig"))
         self._git("add", ".review")
@@ -221,7 +221,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(NAMESPACE, payload["signature_namespace"])
         variants = [dict(payload, signature_namespace="repo-constitution-v1"),
                     {key: value for key, value in payload.items() if key != "signature_namespace"}]
-        with patch("review_memory.core.subprocess.run") as process:
+        with patch("repowise.core.subprocess.run") as process:
             for invalid in variants:
                 with self.subTest(payload=invalid), self.assertRaisesRegex(Error, "signature namespace"):
                     verify_signature(invalid, "", "", root=self.root)

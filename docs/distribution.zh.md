@@ -5,10 +5,10 @@
 ## 用户入口：安装 Skill，然后指定项目
 
 使用标准 [skills CLI](https://github.com/vercel-labs/skills) 安装：
-`partychen/review-memory` 是本 Skill 的发布仓库，不是要学习的项目。
+`partychen/repowise` 是本 Skill 的发布仓库，不是要学习的项目。
 
 ```powershell
-npx skills add partychen/review-memory --skill review-memory -a github-copilot -g
+npx skills add partychen/repowise --skill repowise -a github-copilot -g
 ```
 
 其他宿主使用相应的 `-a` 值；推荐保留 `-g`，采用个人级安装。
@@ -19,11 +19,11 @@ npx skills add partychen/review-memory --skill review-memory -a github-copilot -
 
 然后在目标项目会话中告诉 Copilot：
 
-> 使用 review-memory，同步 acme/my-project 的 PR，并累积评审知识。
+> 使用 repowise，同步 acme/my-project 的 PR，并累积评审知识。
 
 宿主会准备隔离 Python 依赖、绑定项目、分批同步已合并 PR、读取证据、
 提炼并保存候选，再更新累积知识索引。后续说“继续同步这个项目”即可恢复。
-不需要另行安装 review-memory wheel，不需要另配模型 API Key。
+不需要另行安装 repowise wheel，不需要另配模型 API Key。
 
 **安装命令本身不启动任务或后台服务。** 自动化发生在宿主执行 Skill 时。
 需要带 `venv`/`ensurepip` 的 Python 3.11+；在线同步还需要 GitHub CLI 和已有的登录授权。
@@ -35,7 +35,7 @@ npx skills add partychen/review-memory --skill review-memory -a github-copilot -
 本地开发时，可以从源码根目录安装到指定宿主：
 
 ```powershell
-npx skills add . --skill review-memory -a github-copilot -g --copy
+npx skills add . --skill repowise -a github-copilot -g --copy
 ```
 
 如已有同名安装，先检查安装器提示，避免覆盖另一版本。开发单测仍可使用
@@ -44,7 +44,7 @@ npx skills add . --skill review-memory -a github-copilot -g --copy
 ## 自包含目录与依赖
 
 ```text
-review-memory\
+repowise\
   SKILL.md
   requirements.txt
   wheels\
@@ -53,7 +53,7 @@ review-memory\
     provenance.json
   scripts\
     main.py
-    review_memory\
+    repowise\
   references\
   packs\
 ```
@@ -77,11 +77,11 @@ review-memory\
 
 ## 独立项目数据
 
-默认存储根目录为 `~\.review-memory\projects\<项目名>-<路径哈希>`。
+默认存储根目录为 `~\.repowise\projects\<项目名>-<路径哈希>`。
 项目命令返回准确的 `storage_root` 和 `local_path`；数据既不在目标仓库，也不在 Skill 安装目录。
 规范化的本地路径决定独立空间，GitHub 仓库绑定另行检查，同名但不同路径的项目不会混用知识。
 
-可在命令前加全局选项 `--data-home 绝对路径`，或在宿主环境中设置 `REVIEW_MEMORY_HOME`，
+可在命令前加全局选项 `--data-home 绝对路径`，或在宿主环境中设置 `REPOWISE_HOME`，
 指定其他外部父目录。它不能位于目标仓库或 Skill/源码目录内。
 长期知识目录与首次启动使用的依赖缓存分离。
 
@@ -111,14 +111,14 @@ review-memory\
 完成记录明确标注为宿主报告，不是 CLI 独立证明实现正确。
 
 `approval-queue` 提供可阅读的候选交接，`prepare-approval` 为选中的知识生成未签名请求。
-它们不会签名、授信或自动提交，详见[审批流程](../.github/skills/review-memory/references/approval.md)。
+它们不会签名、授信或自动提交，详见[审批流程](../.github/skills/repowise/references/approval.md)。
 不要把私有知识目录打进 Skill 发布包。运行时变更会使已有审批绑定失效，
 需要维护者重新审批，不能通过改签名或放宽校验绕过。
 
 ## 发布
 
-发布仓库为 [partychen/review-memory](https://github.com/partychen/review-memory)，
-保留 `.github/skills/review-memory` 目录。
+发布仓库为 [partychen/repowise](https://github.com/partychen/repowise)，
+保留 `.github/skills/repowise` 目录。
 skills CLI 可以发现这个布局；也可以用完整的 Skill 子目录 GitHub URL 安装。
 无需为了 `npx skills add` 发布 npm 包或 Python 包。
 
@@ -132,7 +132,7 @@ python -m pip wheel . --no-deps --wheel-dir .\dist
 
 Skill ZIP 和校验文件使用 `pyproject.toml` 中的版本号命名。
 ZIP 使用明确文件清单，包含依赖声明，不包含虚拟环境、私有项目数据或机器缓存；
-解压后的整个 `review-memory` 目录也可手动放到宿主认可的 Skill 目录。
+解压后的整个 `repowise` 目录也可手动放到宿主认可的 Skill 目录。
 
 仓库/npx 安装、源码发行包和 Skill ZIP 都必须包含 wheel、许可证、来源记录，
 以及哈希匹配的依赖声明。更新依赖时，按来源记录中的构建方式生成并检查新的 wheel，

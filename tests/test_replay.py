@@ -9,10 +9,10 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / ".github" / "skills" / "review-memory" / "scripts"))
+sys.path.insert(0, str(ROOT / ".github" / "skills" / "repowise" / "scripts"))
 
-from review_memory import core, replay, review
-from review_memory.common import Error, digest, load_json, runtime_info, utcnow, write_json, write_yaml
+from repowise import core, replay, review
+from repowise.common import Error, digest, load_json, runtime_info, utcnow, write_json, write_yaml
 from tests.test_core import file_tree, fixture_directory, git_command, initialize_git, knowledge
 
 
@@ -222,13 +222,13 @@ class ReplayTests(unittest.TestCase):
                 if location == root and args == ("show", "-s", "--format=%cI", sha):
                     return "2026-03-02T00:00:00Z"
                 return original(location, *args)
-            with self.subTest(field=field), patch("review_memory.replay.git", side_effect=dated):
+            with self.subTest(field=field), patch("repowise.replay.git", side_effect=dated):
                 with self.assertRaisesRegex(Error, field + " commit time.*future context"):
                     self.prepare()
         self.assertEqual([], list((self.memory / ".review" / "local" / "evaluation").iterdir()))
 
     def test_commit_timestamps_come_from_their_own_repositories(self):
-        with patch("review_memory.replay.git", wraps=replay.git) as commits:
+        with patch("repowise.replay.git", wraps=replay.git) as commits:
             prepared = self.prepare()
         commits.assert_any_call(self.root, "show", "-s", "--format=%cI", self.base)
         commits.assert_any_call(self.root, "show", "-s", "--format=%cI", self.head)
@@ -281,7 +281,7 @@ class ReplayTests(unittest.TestCase):
                 policy_sha = self.command("rev-parse", "HEAD", root=self.memory)
                 self.dataset["events"][0]["trusted_ref"] = policy_sha
                 # Only signatures are stubbed; this tests cutoff logic, not historical provenance.
-                with patch("review_memory.core.verify_signature"):
+                with patch("repowise.core.verify_signature"):
                     prepared = self.prepare()
                 task = load_json(self.run_directory(prepared) / "task.json")
                 self.assertEqual([], task["knowledge"])
@@ -310,7 +310,7 @@ class ReplayTests(unittest.TestCase):
 
     def test_finished_findings_explicit_tp_unique_issue_recall(self):
         before = file_tree(self.root)
-        with patch("review_memory.core.load_git_snapshot", return_value=self.semantic_snapshot()):
+        with patch("repowise.core.load_git_snapshot", return_value=self.semantic_snapshot()):
             prepared = self.prepare()
         report = self.finish_semantic(prepared)
         ids = [f["finding_id"] for f in report["findings"]]
@@ -335,7 +335,7 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(before, file_tree(self.root))
 
     def test_valid_without_explicit_tp_and_unjudged_controls(self):
-        with patch("review_memory.core.load_git_snapshot", return_value=self.semantic_snapshot()):
+        with patch("repowise.core.load_git_snapshot", return_value=self.semantic_snapshot()):
             prepared = self.prepare()
         report = self.finish_semantic(prepared)
         judgment = {"finding_id": report["findings"][0]["finding_id"], "disposition": "valid",
@@ -349,7 +349,7 @@ class ReplayTests(unittest.TestCase):
         self.assertEqual(1, metrics["normal_control_cases_with_alerts"])
 
     def test_missing_unfinished_mismatched_and_mutated_reports_rejected(self):
-        with patch("review_memory.core.load_git_snapshot", return_value=self.semantic_snapshot()):
+        with patch("repowise.core.load_git_snapshot", return_value=self.semantic_snapshot()):
             prepared = self.prepare()
         labels = self.labels(prepared)
         with self.assertRaisesRegex(Error, "unfinished"):
@@ -394,7 +394,7 @@ class ReplayTests(unittest.TestCase):
             self.score(prepared, labels)
 
     def test_normal_control_inappropriate_alerts_and_unlabeled_cases(self):
-        with patch("review_memory.core.load_git_snapshot", return_value=self.semantic_snapshot()):
+        with patch("repowise.core.load_git_snapshot", return_value=self.semantic_snapshot()):
             prepared = self.prepare()
         report = self.finish_semantic(prepared)
         judgments = [

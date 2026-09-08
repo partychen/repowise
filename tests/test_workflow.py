@@ -7,14 +7,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.test_core import file_tree, fixture_directory, git_command, initialize_git, knowledge
-from review_memory.collect import FIXTURE_SCHEMA, _GitHub, _Store, _Unavailable, bootstrap, harvest
-from review_memory.common import Error, load_json, write_json, write_yaml
-from review_memory.core import approval_request, approve, initialize
-from review_memory.propose import propose
-from review_memory.review import finalize_review, prepare_review
-from review_memory.replay import prepare_replay, score_replay
-from review_memory.cli import main
-from review_memory.storage import initialize_project, project_storage
+from repowise.collect import FIXTURE_SCHEMA, _GitHub, _Store, _Unavailable, bootstrap, harvest
+from repowise.common import Error, load_json, write_json, write_yaml
+from repowise.core import approval_request, approve, initialize
+from repowise.propose import propose
+from repowise.review import finalize_review, prepare_review
+from repowise.replay import prepare_replay, score_replay
+from repowise.cli import main
+from repowise.storage import initialize_project, project_storage
 
 
 class LearningWorkflowTests(unittest.TestCase):
@@ -22,11 +22,11 @@ class LearningWorkflowTests(unittest.TestCase):
         with fixture_directory() as directory:
             adapter = _GitHub("example/project", _Store(directory, "example/project"))
             missing = subprocess.CompletedProcess([], 1, "", "not found (HTTP 404)")
-            with patch("review_memory.collect.subprocess.run", return_value=missing):
+            with patch("repowise.collect.subprocess.run", return_value=missing):
                 with self.assertRaises(_Unavailable):
                     adapter.content("a" * 40, "src/lib.rs")
             limited = subprocess.CompletedProcess([], 1, "", "rate limit exceeded (HTTP 403) secret-text")
-            with patch("review_memory.collect.subprocess.run", return_value=limited):
+            with patch("repowise.collect.subprocess.run", return_value=limited):
                 with self.assertRaises(Error) as result:
                     adapter.content("a" * 40, "src/lib.rs")
             self.assertIn("rate limited", str(result.exception))
@@ -111,7 +111,7 @@ class SignedReviewWorkflowTests(unittest.TestCase):
                 content_path = local / f"{kind}.yaml"
                 write_yaml(content_path, content)
                 request = Path(approval_request(root, content_path, kind, "test-only", "Synthetic regression fixture only")["request"])
-                subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "review-memory-v1", str(request)],
+                subprocess.run(["ssh-keygen", "-Y", "sign", "-f", str(key), "-n", "repowise-v1", str(request)],
                                check=True, capture_output=True)
                 approve(root, request, Path(str(request) + ".sig"))
 
@@ -176,7 +176,7 @@ class SignedReviewWorkflowTests(unittest.TestCase):
                                  "rationale": "Synthetic semantic acknowledgement; no real model result."}],
                 "findings": [],
             })
-            with patch("review_memory.review.runtime_info", return_value={"hash": "changed"}):
+            with patch("repowise.review.runtime_info", return_value={"hash": "changed"}):
                 with self.assertRaisesRegex(Error, "Runtime changed"):
                     finalize_review(root, prepared["run_id"], response_path)
             report = finalize_review(root, prepared["run_id"], response_path)

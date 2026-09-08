@@ -59,7 +59,7 @@ The only supported tool ID remains `rust.forbidden-dependency.v1`, with exactly
 
 The maintainer controls the external storage root's `.review\allowed_signers`
 using OpenSSH allowed-signers syntax, binding the intended identity to a verified public key. Restrict the
-namespace to `review-memory-v1` where appropriate. Initialization leaves
+namespace to `repowise-v1` where appropriate. Initialization leaves
 this file without trusted keys.
 
 Never trust a public key just because the PR supplies it. Commit authorized
@@ -101,7 +101,7 @@ versions requires a new request and maintainer approval, not a verification bypa
 After independently inspecting that exact request, the maintainer runs:
 
 ```powershell
-ssh-keygen -Y sign -f <maintainer-key> -n review-memory-v1 <request>
+ssh-keygen -Y sign -f <maintainer-key> -n repowise-v1 <request>
 ```
 
 `<maintainer-key>` and `<request>` are placeholders to replace, not literal

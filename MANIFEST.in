@@ -1,15 +1,15 @@
 include README.md README.zh.md AGENTS.md
-include .github/skills/review-memory/SKILL.md
-include .github/skills/review-memory/requirements.txt
-include .github/skills/review-memory/wheels/*.whl
-include .github/skills/review-memory/wheels/provenance.json
-include .github/skills/review-memory/wheels/LICENSE.PyYAML.txt
-include .github/skills/review-memory/references/*.md
-include .github/skills/review-memory/packs/__init__.py
-include .github/skills/review-memory/packs/*.json
-include .github/skills/review-memory/packs/sources/*.json
-include .github/skills/review-memory/scripts/main.py
-include .github/skills/review-memory/scripts/review_memory/*.py
+include .github/skills/repowise/SKILL.md
+include .github/skills/repowise/requirements.txt
+include .github/skills/repowise/wheels/*.whl
+include .github/skills/repowise/wheels/provenance.json
+include .github/skills/repowise/wheels/LICENSE.PyYAML.txt
+include .github/skills/repowise/references/*.md
+include .github/skills/repowise/packs/__init__.py
+include .github/skills/repowise/packs/*.json
+include .github/skills/repowise/packs/sources/*.json
+include .github/skills/repowise/scripts/main.py
+include .github/skills/repowise/scripts/repowise/*.py
 recursive-include docs *.md
 recursive-include examples *.json *.yaml
 include tools/package_skill.py

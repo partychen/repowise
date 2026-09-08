@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-SKILL = PROJECT / ".github" / "skills" / "review-memory"
+SKILL = PROJECT / ".github" / "skills" / "repowise"
 
 
 def load_launcher(script):
@@ -38,7 +38,7 @@ class LauncherTests(unittest.TestCase):
         self.target = self.directory / "target"
         self.target.mkdir()
         self.addCleanup(patch.stopall)
-        patch.dict(os.environ, {"REVIEW_MEMORY_CACHE": str(self.cache)}).start()
+        patch.dict(os.environ, {"REPOWISE_CACHE": str(self.cache)}).start()
         patch.object(self.launcher.Path, "cwd", return_value=self.target).start()
         self.requirement, self.content, self.version = self.launcher.requirements()
         self.key = self.launcher.cache_key(self.content)
@@ -272,12 +272,12 @@ class LauncherTests(unittest.TestCase):
 
     def test_cache_cannot_be_relative_or_inside_source_or_target(self):
         for root in ("relative cache", str(self.skill / "cache"), str(self.target / "cache")):
-            with self.subTest(root=root), patch.dict(os.environ, {"REVIEW_MEMORY_CACHE": root}):
+            with self.subTest(root=root), patch.dict(os.environ, {"REPOWISE_CACHE": root}):
                 result, _, error = self.call("setup")
                 self.assertEqual(result, 2)
                 self.assertIn("cache", error.lower())
         other = self.directory / "other project"
-        with patch.dict(os.environ, {"REVIEW_MEMORY_CACHE": str(other / "cache")}):
+        with patch.dict(os.environ, {"REPOWISE_CACHE": str(other / "cache")}):
             with self.assertRaises(self.launcher.LauncherError):
                 self.launcher.cache_root(["--root", str(other), "doctor"])
 
@@ -285,9 +285,9 @@ class LauncherTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True), \
                 patch.object(self.launcher.Path, "home", return_value=self.directory / "home"):
             for system, suffix in (
-                    ("win32", (".cache", "review-memory")),
-                    ("darwin", ("Library", "Caches", "review-memory")),
-                    ("linux", (".cache", "review-memory"))):
+                    ("win32", (".cache", "repowise")),
+                    ("darwin", ("Library", "Caches", "repowise")),
+                    ("linux", (".cache", "repowise"))):
                 with self.subTest(system=system), patch.object(self.launcher.sys, "platform", system):
                     expected = self.directory.joinpath("home", *suffix)
                     self.assertEqual(self.launcher.cache_root([]), expected)
@@ -325,13 +325,13 @@ class InstalledLauncherTests(unittest.TestCase):
         cls.environment = cls.cache / cls.key
         cls.target = cls.directory / "untrusted PR"
         cls.target.mkdir()
-        for name in ("review_memory.py", "yaml.py", "sitecustomize.py", "usercustomize.py"):
+        for name in ("repowise.py", "yaml.py", "sitecustomize.py", "usercustomize.py"):
             (cls.target / name).write_text('raise RuntimeError("Untrusted project code executed")')
-        (cls.target / "review_memory").mkdir()
-        (cls.target / "review_memory" / "__init__.py").write_text(
+        (cls.target / "repowise").mkdir()
+        (cls.target / "repowise" / "__init__.py").write_text(
             'raise RuntimeError("Untrusted project package executed")')
-        cls.env = dict(os.environ, REVIEW_MEMORY_CACHE=str(cls.cache),
-                       REVIEW_MEMORY_HOME=str(cls.directory / "project memory"),
+        cls.env = dict(os.environ, REPOWISE_CACHE=str(cls.cache),
+                       REPOWISE_HOME=str(cls.directory / "project memory"),
                        PYTHONPATH=str(cls.target), PYTHONHOME=str(cls.target))
         # A fresh cache and unreachable proxies exercise real setup without PyPI or pip-cache access.
         for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
@@ -349,10 +349,10 @@ class InstalledLauncherTests(unittest.TestCase):
             [str(python), "-I", "-c", "import sysconfig; print(sysconfig.get_path('purelib'))"],
             capture_output=True, text=True, check=True)
         site = Path(result.stdout.strip())
-        (site / "review_memory").mkdir()
-        (site / "review_memory" / "__init__.py").write_text(
+        (site / "repowise").mkdir()
+        (site / "repowise" / "__init__.py").write_text(
             'raise RuntimeError("Unrelated global package executed")')
-        (site / "review_memory.py").write_text('raise RuntimeError("Unrelated global module executed")')
+        (site / "repowise.py").write_text('raise RuntimeError("Unrelated global module executed")')
 
     def invoke(self, *args, script=None):
         return subprocess.run(
@@ -368,7 +368,7 @@ class InstalledLauncherTests(unittest.TestCase):
         result = self.invoke("packs", "list")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(json.loads(result.stdout)["packs"])
-        self.assertFalse((self.skill / "scripts" / "review_memory" / "__pycache__").exists())
+        self.assertFalse((self.skill / "scripts" / "repowise" / "__pycache__").exists())
 
     def test_ready_setup_reuses_offline_environment_and_help_works(self):
         result = self.invoke("setup")

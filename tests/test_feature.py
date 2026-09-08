@@ -5,10 +5,10 @@ import unittest
 from unittest.mock import patch
 
 from tests.test_core import file_tree, fixture_directory, git_command, initialize_git, knowledge
-from review_memory.common import Error, load_json, write_json
-from review_memory.core import DEFAULT_CONFIG, initialize
-from review_memory.feature import finish_feature, prepare_feature
-from review_memory.review_contract import REPOSITORY_DIMENSIONS
+from repowise.common import Error, load_json, write_json
+from repowise.core import DEFAULT_CONFIG, initialize
+from repowise.feature import finish_feature, prepare_feature
+from repowise.review_contract import REPOSITORY_DIMENSIONS
 
 
 class FeatureTests(unittest.TestCase):
@@ -29,9 +29,9 @@ class FeatureTests(unittest.TestCase):
             "config": dict(DEFAULT_CONFIG, repository="example/project"),
             "knowledge": [self.item], "manifest": {"coverage_gaps": []},
         }
-        self.loader = self.enterContext(patch("review_memory.feature.load_git_snapshot",
+        self.loader = self.enterContext(patch("repowise.feature.load_git_snapshot",
                                               return_value=self.snapshot))
-        self.enterContext(patch("review_memory.feature.runtime_info",
+        self.enterContext(patch("repowise.feature.runtime_info",
                                 return_value={"hash": "synthetic-stable-runtime"}))
 
     def prepare(self, **options):
@@ -95,7 +95,7 @@ class FeatureTests(unittest.TestCase):
     def test_completion_records_but_does_not_execute_or_edit(self):
         prepared = self.prepare()
         before = file_tree(self.target)
-        with patch("review_memory.common.subprocess.run", side_effect=AssertionError("No target execution")):
+        with patch("repowise.common.subprocess.run", side_effect=AssertionError("No target execution")):
             result = self.finish(prepared, self.response(prepared))
         self.assertEqual("complete", result["status"])
         self.assertEqual("host_reported_not_independently_verified", result["verification"])

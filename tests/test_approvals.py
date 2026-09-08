@@ -7,14 +7,14 @@ from unittest.mock import patch
 import uuid
 
 from tests.test_core import knowledge
-from review_memory import collect, core
-from review_memory.approvals import approval_queue, prepare_approval
-from review_memory.common import (
+from repowise import collect, core
+from repowise.approvals import approval_queue, prepare_approval
+from repowise.common import (
     Error, canonical_bytes, digest, load_json, load_yaml, runtime_info,
     timestamp, utcnow, write_json, write_yaml,
 )
-from review_memory.propose import load_saved_proposal, propose
-from review_memory.sync import project_status, sync_project
+from repowise.propose import load_saved_proposal, propose
+from repowise.sync import project_status, sync_project
 
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -283,7 +283,7 @@ class ApprovalTests(unittest.TestCase):
         path = self.save()
         for refused_path in (path.parent, self.bundle_path):
             with self.subTest(path=refused_path), \
-                    patch("review_memory.common.is_link", side_effect=lambda entry: entry == refused_path):
+                    patch("repowise.common.is_link", side_effect=lambda entry: entry == refused_path):
                 queue = approval_queue(self.root)
                 self.assertEqual(queue["status"], "partial")
                 self.assertEqual(queue["candidate_count"], 0)
@@ -307,7 +307,7 @@ class ApprovalTests(unittest.TestCase):
 
     def test_expired_candidate_cannot_be_made_ready_by_backdating(self):
         path = self.save(self.candidate(valid_until="2026-02-01T00:00:00Z"))
-        with patch("review_memory.approvals.utcnow", return_value="2026-03-01T00:00:00Z"):
+        with patch("repowise.approvals.utcnow", return_value="2026-03-01T00:00:00Z"):
             entry = approval_queue(self.root)["candidates"][0]
             self.assertFalse(entry["can_prepare_request"])
             self.assertIn("expired_candidate", [x["code"] for x in entry["readiness_blockers"]])

@@ -1,7 +1,7 @@
-# Working on review-memory
+# Working on repowise
 
 This project builds one Copilot skill, not a collection of separately triggered Rust skills.
-The skill lives in `.github/skills/review-memory`; invoke its bundled `scripts/main.py`
+The skill lives in `.github/skills/repowise`; invoke its bundled `scripts/main.py`
 with `python -I`, resolving the actual Skill installation directory. Python 3.11 or
 newer is required. Users install with `npx skills add`; a separate runtime wheel is optional.
 
@@ -25,7 +25,7 @@ newer is required. Users install with `npx skills add`; a separate runtime wheel
 - Keep raw data, model contexts, proposals, and evaluation answers under `.review/local`.
 - All `.review` paths are relative to the external `storage_root`, never the target
   checkout. `--root` selects read-only source; project memory defaults to
-  `~\.review-memory\projects\<name>-<path-hash>`. Do not add target files or ignores.
+  `~\.repowise\projects\<name>-<path-hash>`. Do not add target files or ignores.
 - Read policy commits from the external memory's own Git repository; read base/head
   commits only from the target. Do not fall back to target `.review` data.
 - Approval handoffs must present validated candidates and readable previews, then
@@ -39,7 +39,7 @@ The bundled launcher `setup` prepares user dependencies, and `tools/package_skil
 builds Skill release archives. Editable installations are development-only.
 Run focused regression tests with `python -m unittest tests.test_core -v`, or the full suite
 with `python -m unittest discover -s tests -v`.
-Set `REVIEW_MEMORY_TEST_INSTALL=1` when running `tests.test_installed_workflow` to
+Set `REPOWISE_TEST_INSTALL=1` when running `tests.test_installed_workflow` to
 exercise real npx installation and isolated dependency setup in temporary directories.
 
 Test-only SSH keys must be ephemeral, generated inside temporary test directories, and never

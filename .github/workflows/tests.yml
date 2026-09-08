@@ -31,5 +31,5 @@ jobs:
       - name: Install Skill and exercise the learning workflow
         if: matrix.python == '3.13'
         env:
-          REVIEW_MEMORY_TEST_INSTALL: "1"
+          REPOWISE_TEST_INSTALL: "1"
         run: python -m unittest tests.test_installed_workflow -v

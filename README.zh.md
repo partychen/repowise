@@ -1,10 +1,13 @@
-# Review Memory
+# RepoWise
 
 [English](README.md) | 简体中文
 
-**RepoWise** 是项目名称，Copilot Skill 和代码仓库仍叫 `review-memory`。
-它让同一份项目知识支撑三个完整流程：**沉淀工程经验、审查 PR，
+> 把团队积累的经验，带进下一次代码变更。
+
+**RepoWise** 是一个 Copilot Skill，让同一份项目知识支撑三个完整流程：**沉淀工程经验、审查 PR，
 以及遵循本仓库架构和习惯实现 feature**。记忆是共享基础，不是最终目的。
+
+代码仓库、Skill 和 CLI 统一使用 `repowise`。
 
 项目知识**像滚雪球一样，从一个 PR 生长到下一个 PR**：学习已合并 PR，
 保存经验，用已批准的修订辅助后续评审，再随着新的人工反馈补充和修正。
@@ -53,7 +56,7 @@ Reviewer 必须先检查本项目的架构边界、已有框架与工具、接�
 还必须提交经过校验的 BASE 对照引用，不能拿 PR 自己新加的例子证明“项目一贯如此”。
 直接可证的行为错误不必编造相似实现；漏评和缺失上下文会保留为覆盖缺口。
 引用校验只能证明来源和原文匹配，不能代替对模型推理是否正确的判断。
-详见[审查契约](.github/skills/review-memory/references/review.md)。
+详见[审查契约](.github/skills/repowise/references/review.md)。
 
 ### 各部分负责什么
 
@@ -91,7 +94,7 @@ flowchart LR
    精确匹配的经验会归组并保留证据关联；语义合并仍由宿主判断。
    不是每个 PR 都必须产出一条新知识。
 3. **人工批准。** 积累知识不需要先审批；要用于规则审查，维护者必须检查具体修订，
-   按[审批流程](.github/skills/review-memory/references/approval.md)进行 SSH 签名，
+   按[审批流程](.github/skills/repowise/references/approval.md)进行 SSH 签名，
    再将校验后的知识和审批记录提交到外部数据目录自己的可信 Git 历史，不是目标分支。
    静态检测器还需要单独批准；助手不能代签或给自己授权。
 4. **反哺后续评审。** `review` 固定目标代码的 base/head 提交，以及维护者从外部知识仓库
@@ -121,7 +124,7 @@ feature 的实际编码由另行取得用户授权的宿主完成。
 ## 安装
 
 ```powershell
-npx skills add partychen/review-memory --skill review-memory -a github-copilot -g
+npx skills add partychen/repowise --skill repowise -a github-copilot -g
 ```
 
 需要 Node.js/npx，以及带 `venv`、`ensurepip` 的 Python 3.11+。
@@ -146,23 +149,23 @@ gh auth login
 最直接的方式是明确写出 Skill 名称：
 
 ```text
-使用 review-memory，同步这个项目的 PR，并积累评审知识。
+使用 repowise，同步这个项目的 PR，并积累评审知识。
 ```
 
-在 Copilot CLI 中，也可以通过 `/review-memory` 显式指定：
+在 Copilot CLI 中，也可以通过 `/repowise` 显式指定：
 
 ```text
-使用 /review-memory，同步这个项目的 PR，并积累评审知识。
+使用 /repowise，同步这个项目的 PR，并积累评审知识。
 ```
 
 “同步 PR”“学习历史评审”“积累评审知识”等任务描述可帮助助手自动匹配。
-**推荐直接带上 `review-memory`，不要依赖单个关键词触发。**
+**推荐直接带上 `repowise`，不要依赖单个关键词触发。**
 
 如果安装时 Copilot CLI 已经打开，先在 CLI 会话内执行：
 
 ```text
 /skills reload
-/skills info review-memory
+/skills info repowise
 ```
 
 其他宿主如果没有刷新到新 Skill，重新打开会话，并确认安装时选择了对应宿主。
@@ -172,7 +175,7 @@ gh auth login
 在目标项目会话中输入，替换成你自己的 GitHub 项目：
 
 ```text
-使用 review-memory。
+使用 repowise。
 项目是 https://github.com/acme/my-project，本地目录就是当前工作区。
 同步已合并 PR 的评审记录，提炼经验并保存为项目知识。
 ```
@@ -187,7 +190,7 @@ gh auth login
 如果只想学习某段历史，可以在首次连接时说明：
 
 ```text
-使用 review-memory，为 acme/my-project 学习 2026-01-01 之后合并的 PR。
+使用 repowise，为 acme/my-project 学习 2026-01-01 之后合并的 PR。
 本地目录使用当前工作区。
 ```
 
@@ -199,21 +202,21 @@ gh auth login
 
 | 想做什么 | 在助手对话中输入 |
 | --- | --- |
-| 继续同步与学习 | 使用 review-memory，继续同步当前项目，并完成剩余知识提炼。 |
-| 看进度 | 使用 review-memory，查看当前项目还有多少 PR 和学习任务待处理。 |
-| 看积累的知识 | 使用 review-memory，汇总当前项目的知识，并列出支持它们的 PR。 |
-| 完整补查历史反馈 | 使用 review-memory，完成待处理队列后，完整刷新历史 PR 的评审记录。 |
-| 学习指定 PR | 使用 review-memory，学习 acme/my-project 的 PR #123，提炼并保存评审经验。 |
-| 开始知识审批 | 使用 review-memory，展示待审批候选及证据，为我选中的知识准备维护者签名材料。 |
-| 用已批准知识审查 | 使用 review-memory，按当前项目已批准的规则审查这次变更。 |
-| 审查指定 PR | 使用 review-memory，审查 https://github.com/acme/my-project/pull/123，并采用选定的项目策略。 |
-| 实现 feature | 使用 review-memory，按现有架构和已批准知识实现这个 feature，保留我的已有修改，并取得所需验证命令的授权。 |
+| 继续同步与学习 | 使用 repowise，继续同步当前项目，并完成剩余知识提炼。 |
+| 看进度 | 使用 repowise，查看当前项目还有多少 PR 和学习任务待处理。 |
+| 看积累的知识 | 使用 repowise，汇总当前项目的知识，并列出支持它们的 PR。 |
+| 完整补查历史反馈 | 使用 repowise，完成待处理队列后，完整刷新历史 PR 的评审记录。 |
+| 学习指定 PR | 使用 repowise，学习 acme/my-project 的 PR #123，提炼并保存评审经验。 |
+| 开始知识审批 | 使用 repowise，展示待审批候选及证据，为我选中的知识准备维护者签名材料。 |
+| 用已批准知识审查 | 使用 repowise，按当前项目已批准的规则审查这次变更。 |
+| 审查指定 PR | 使用 repowise，审查 https://github.com/acme/my-project/pull/123，并采用选定的项目策略。 |
+| 实现 feature | 使用 repowise，按现有架构和已批准知识实现这个 feature，保留我的已有修改，并取得所需验证命令的授权。 |
 
 审查 PR 时，宿主可以直接使用 `review --pr 编号或URL`，无需用户手工拼接代码 SHA；
 CLI 只解析本地不可变版本，不检出或拉取目标代码。实现 feature 时，
 `feature` 准备上下文，宿主经授权后实际编码和验证，最后用 `feature-finish` 记录结果。
 **上下文包或书面方案不是已完成的实现。**
-详见 [feature 工作流](.github/skills/review-memory/references/feature.md)。
+详见 [feature 工作流](.github/skills/repowise/references/feature.md)。
 
 ## 到哪里审批知识
 
@@ -225,7 +228,7 @@ CLI 只解析本地不可变版本，不检出或拉取目标代码。实现 fea
 对应命令是 `approval-queue` 和 `prepare-approval`。
 维护者本人配置可信签名身份并在助手之外签名，`approve` 负责验签和导入。
 正式启用还需要把批准记录纳入**外部知识目录自己的 Git 历史**，不需要向目标仓库提交文件。
-具体步骤见[审批流程](.github/skills/review-memory/references/approval.md)。
+具体步骤见[审批流程](.github/skills/repowise/references/approval.md)。
 审批不阻塞继续学习剩余 PR。
 
 ## 知识保存在哪里
@@ -233,7 +236,7 @@ CLI 只解析本地不可变版本，不检出或拉取目标代码。实现 fea
 项目数据放在目标仓库和 Skill 安装目录之外：
 
 ```text
-~\.review-memory\projects\<项目名>-<路径哈希>\.review\
+~\.repowise\projects\<项目名>-<路径哈希>\.review\
 ```
 
 规范化的本地路径决定独立空间，目录名只是便于识别的标签；另行核对保存的 GitHub 仓库绑定。
@@ -257,7 +260,7 @@ CLI 只解析本地不可变版本，不检出或拉取目标代码。实现 fea
 | `.review/local/features` | Feature 上下文、宿主修改与验证结果、完成记录 |
 
 更新或重新安装 Skill 不会替换这个独立数据目录。
-也可以用 `--data-home` 或 `REVIEW_MEMORY_HOME` 指定其他绝对路径的外部父目录。
+也可以用 `--data-home` 或 `REPOWISE_HOME` 指定其他绝对路径的外部父目录。
 CLI 不修改目标仓库及其 `.gitignore`；经授权的 feature 修改由宿主执行，而不是 CLI。
 忽略 `.review/local` 的规则只存在于外部知识仓库。
 项目只有这一套外部存储布局，不回退到目标仓库中的记忆数据。
@@ -265,10 +268,10 @@ CLI 不修改目标仓库及其 `.gitignore`；经授权的 feature 修改由宿
 ## 更多说明
 
 - [安装、存储与发布](docs/distribution.zh.md)
-- [同步流程](.github/skills/review-memory/references/sync.md)
-- [从历史中学习](.github/skills/review-memory/references/learning.md)
-- [知识结构与生命周期](.github/skills/review-memory/references/knowledge.md)
-- [知识审批](.github/skills/review-memory/references/approval.md)
-- [代码审查](.github/skills/review-memory/references/review.md)
-- [Feature 实现](.github/skills/review-memory/references/feature.md)
-- [历史回放与独立评估](.github/skills/review-memory/references/replay.md)
+- [同步流程](.github/skills/repowise/references/sync.md)
+- [从历史中学习](.github/skills/repowise/references/learning.md)
+- [知识结构与生命周期](.github/skills/repowise/references/knowledge.md)
+- [知识审批](.github/skills/repowise/references/approval.md)
+- [代码审查](.github/skills/repowise/references/review.md)
+- [Feature 实现](.github/skills/repowise/references/feature.md)
+- [历史回放与独立评估](.github/skills/repowise/references/replay.md)

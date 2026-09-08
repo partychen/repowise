@@ -4,11 +4,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.test_core import fixture_directory, knowledge
-from review_memory import collect
-from review_memory.common import load_json, write_json
-from review_memory.core import initialize
-from review_memory.propose import propose
-from review_memory.sync import project_status
+from repowise import collect
+from repowise.common import load_json, write_json
+from repowise.core import initialize
+from repowise.propose import propose
+from repowise.sync import project_status
 
 
 class LearningInboxTests(unittest.TestCase):

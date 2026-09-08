@@ -18,7 +18,7 @@ run failures and gaps rather than summarizing a partial run as complete.
 
 For a controlled offline input, add `--fixture .\collection-fixture.json`.
 The fixture is JSON data with schema
-`review-memory.collection-fixture.v1`, `repository` and `prs`.
+`repowise.collection-fixture.v1`, `repository` and `prs`.
 PR/review/comment objects use GitHub REST field names. `comments` denotes PR
 review comments, not `issue_comments`. Optional `versions` supplies explicit
 before/after snapshots bound to a `comment_id` and exact `comment_updated_at`.

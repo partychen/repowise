@@ -20,8 +20,8 @@ class PortabilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=PROJECT) as directory:
             temporary = Path(directory)
             source = temporary / "arbitrary source name"
-            skill = source / ".github" / "skills" / "review-memory"
-            shutil.copytree(PROJECT / ".github" / "skills" / "review-memory", skill,
+            skill = source / ".github" / "skills" / "repowise"
+            shutil.copytree(PROJECT / ".github" / "skills" / "repowise", skill,
                             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
             shutil.copy2(PROJECT / "pyproject.toml", source / "pyproject.toml")
             (skill / ".review" / "local").mkdir(parents=True)
@@ -35,29 +35,29 @@ class PortabilityTests(unittest.TestCase):
             self.assertEqual(second, package_skill.build_archive(moved, temporary / "second"))
             with ZipFile(first["archive"]) as archive:
                 names = archive.namelist()
-                self.assertIn("review-memory/SKILL.md", names)
-                self.assertIn("review-memory/requirements.txt", names)
-                self.assertEqual(archive.read("review-memory/requirements.txt"),
-                                 (moved / ".github" / "skills" / "review-memory" / "requirements.txt").read_bytes())
-                self.assertIn("review-memory/references/setup.md", names)
-                self.assertIn("review-memory/scripts/review_memory/storage.py", names)
-                self.assertIn("review-memory/scripts/review_memory/approvals.py", names)
-                self.assertIn("review-memory/scripts/review_memory/repository_context.py", names)
-                self.assertIn("review-memory/scripts/review_memory/review_contract.py", names)
-                self.assertIn("review-memory/scripts/review_memory/feature.py", names)
-                self.assertIn("review-memory/scripts/review_memory/pull_requests.py", names)
-                self.assertIn("review-memory/references/feature.md", names)
-                self.assertIn("review-memory/packs/sources/actionbook-rust-skills.json", names)
-                self.assertIn("review-memory/wheels/LICENSE.PyYAML.txt", names)
-                provenance = json.loads(archive.read("review-memory/wheels/provenance.json"))
-                wheel_name = "review-memory/wheels/" + provenance["wheel"]["filename"]
+                self.assertIn("repowise/SKILL.md", names)
+                self.assertIn("repowise/requirements.txt", names)
+                self.assertEqual(archive.read("repowise/requirements.txt"),
+                                 (moved / ".github" / "skills" / "repowise" / "requirements.txt").read_bytes())
+                self.assertIn("repowise/references/setup.md", names)
+                self.assertIn("repowise/scripts/repowise/storage.py", names)
+                self.assertIn("repowise/scripts/repowise/approvals.py", names)
+                self.assertIn("repowise/scripts/repowise/repository_context.py", names)
+                self.assertIn("repowise/scripts/repowise/review_contract.py", names)
+                self.assertIn("repowise/scripts/repowise/feature.py", names)
+                self.assertIn("repowise/scripts/repowise/pull_requests.py", names)
+                self.assertIn("repowise/references/feature.md", names)
+                self.assertIn("repowise/packs/sources/actionbook-rust-skills.json", names)
+                self.assertIn("repowise/wheels/LICENSE.PyYAML.txt", names)
+                provenance = json.loads(archive.read("repowise/wheels/provenance.json"))
+                wheel_name = "repowise/wheels/" + provenance["wheel"]["filename"]
                 self.assertIn(wheel_name, names)
                 self.assertEqual(archive.read(wheel_name),
-                                 (moved / ".github" / "skills" / "review-memory" /
+                                 (moved / ".github" / "skills" / "repowise" /
                                   "wheels" / provenance["wheel"]["filename"]).read_bytes())
                 self.assertFalse(any(".review/" in name or "__pycache__" in name or name.endswith(".log") for name in names))
-                self.assertTrue(all(name.startswith("review-memory/") and "\\" not in name for name in names))
-            (moved / ".github" / "skills" / "review-memory" / "SKILL.md").write_text("Changed release")
+                self.assertTrue(all(name.startswith("repowise/") and "\\" not in name for name in names))
+            (moved / ".github" / "skills" / "repowise" / "SKILL.md").write_text("Changed release")
             with self.assertRaisesRegex(ValueError, "Refusing to replace"):
                 package_skill.build_archive(moved, temporary / "second")
 
@@ -65,8 +65,8 @@ class PortabilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=PROJECT) as directory:
             temporary = Path(directory)
             source = temporary / "source"
-            skill = source / ".github" / "skills" / "review-memory"
-            shutil.copytree(PROJECT / ".github" / "skills" / "review-memory", skill,
+            skill = source / ".github" / "skills" / "repowise"
+            shutil.copytree(PROJECT / ".github" / "skills" / "repowise", skill,
                             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
             shutil.copy2(PROJECT / "pyproject.toml", source / "pyproject.toml")
             provenance = json.loads((skill / "wheels" / "provenance.json").read_text(encoding="utf-8"))
@@ -87,16 +87,16 @@ class PortabilityTests(unittest.TestCase):
     def test_missing_runtime_does_not_execute_shadowing_target_file(self):
         with tempfile.TemporaryDirectory(dir=PROJECT) as directory:
             target = Path(directory)
-            (target / "review_memory.py").write_text('raise RuntimeError("Untrusted target module executed")')
+            (target / "repowise.py").write_text('raise RuntimeError("Untrusted target module executed")')
             installed = target / "installed skill"
-            shutil.copytree(PROJECT / ".github" / "skills" / "review-memory", installed,
+            shutil.copytree(PROJECT / ".github" / "skills" / "repowise", installed,
                             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
             repository = target / "project"
             repository.mkdir()
-            (repository / "review_memory.py").write_text('raise RuntimeError("Untrusted target module executed")')
+            (repository / "repowise.py").write_text('raise RuntimeError("Untrusted target module executed")')
             env = dict(os.environ)
             env["PYTHONPATH"] = str(target)
-            env["REVIEW_MEMORY_CACHE"] = str(target / "cache")
+            env["REPOWISE_CACHE"] = str(target / "cache")
             result = subprocess.run(
                 [sys.executable, "-I", str(installed / "scripts" / "main.py"), "doctor"],
                 cwd=repository, env=env, capture_output=True, text=True,
@@ -108,7 +108,7 @@ class PortabilityTests(unittest.TestCase):
             self.assertFalse((target / "cache").exists())
 
     def test_user_docs_have_no_machine_specific_tool_location(self):
-        files = [PROJECT / "README.md", *list((PROJECT / ".github" / "skills" / "review-memory").rglob("*.md"))]
+        files = [PROJECT / "README.md", *list((PROJECT / ".github" / "skills" / "repowise").rglob("*.md"))]
         for path in files:
             with self.subTest(path=path):
                 content = path.read_text(encoding="utf-8")
