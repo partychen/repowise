@@ -26,6 +26,10 @@ YAML anchors, aliases, custom tags and duplicate mapping keys are rejected;
 use plain JSON-compatible data, not YAML object-construction features.
 Use portable repository-relative glob paths such as `crates/api/**`; Windows
 shell commands still use backslash filesystem paths.
+Applicability patterns are validated as repository-relative expressions, not
+resolved against the local filesystem. Absolute paths, parent traversal, drive
+prefixes and NUL characters are rejected; actual file access retains separate
+path and link checks.
 
 An illustrative candidate shape (not a learned rule; replace its content and
 evidence ID with findings supported by the actual task):

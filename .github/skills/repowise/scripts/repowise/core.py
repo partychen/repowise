@@ -4,7 +4,7 @@ import json
 import re
 import subprocess
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .common import (
     Error, atomic_write, canonical_bytes, digest, git, load_json, load_yaml,
@@ -86,6 +86,13 @@ def initialize(root: Path, repository: str) -> dict:
     return {"status": "initialized", "repository": repository, "approval": "SSH signature required; no trusted signers configured"}
 
 
+def _validate_path_pattern(pattern: str):
+    _text(pattern, "Path pattern")
+    portable = PurePosixPath(pattern.replace("\\", "/"))
+    if portable.is_absolute() or ".." in portable.parts or ":" in pattern or "\x00" in pattern:
+        raise Error(f"Path pattern must stay repository-relative: {pattern}")
+
+
 def validate_knowledge(item: dict, *, approving=False):
     _object(item, "knowledge")
     if item.get("schema_version") != 1 or not re.fullmatch(r"K-[A-Za-z0-9-]+", str(item.get("id", ""))):
@@ -105,8 +112,7 @@ def validate_knowledge(item: dict, *, approving=False):
     for field in ("paths", "exclusions"):
         _list(applicability.get(field), f"applicability.{field}")
         for pattern in applicability[field]:
-            _text(pattern, f"applicability.{field}[]")
-            safe_path(Path.cwd(), pattern)
+            _validate_path_pattern(pattern)
     if not applicability["paths"]:
         raise Error("At least one applicability path is required.")
     _text(applicability.get("context"), "applicability.context")

@@ -104,6 +104,26 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(Error):
             validate_knowledge(item, approving=True)
 
+    def test_knowledge_globs_do_not_access_the_filesystem(self):
+        item = knowledge()
+        item["applicability"]["paths"] = ["**/*.rs", "src/handler?.rs", "crates/[ab]*/**", "Cargo.toml"]
+        item["applicability"]["exclusions"] = ["generated/**", "**/test[0-9].rs"]
+        with patch.object(Path, "cwd", side_effect=AssertionError("Patterns must not depend on cwd")), \
+                patch.object(Path, "lstat", side_effect=OSError(123, "Invalid Windows filename")), \
+                patch.object(Path, "resolve", side_effect=AssertionError("Patterns are not filesystem paths")):
+            self.assertEqual(validate_knowledge(item, approving=True), item)
+
+    def test_knowledge_globs_reject_path_escapes(self):
+        for field in ("paths", "exclusions"):
+            for pattern in ("../*.rs", "src/../../*", "src\\..\\*", "/**", "\\**",
+                            "C:\\*.rs", "C:*.rs", "\\\\server\\share\\*", "src/\x00*",
+                            "", " ", None, 7):
+                with self.subTest(field=field, pattern=pattern):
+                    item = knowledge()
+                    item["applicability"][field] = [pattern]
+                    with self.assertRaises(Error):
+                        validate_knowledge(item)
+
     def test_request_does_not_approve(self):
         path = self.root / "candidate.yaml"
         write_yaml(path, knowledge())
