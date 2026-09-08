@@ -5,7 +5,7 @@
 This is an evidence-backed governance and review pipeline, not a claim of
 universal Rust expertise. It includes read-only historical collection, host
 induction, signature-backed revision approval, one fixed Cargo dependency
-detector, bounded semantic review, local reports, and a reduced temporal replay.
+detector, bounded role-based host review, local reports, and a reduced temporal replay.
 
 The versioned reference packs broaden the questions a reviewer can ask. They do not
 expand the approved policy set or the executable detector allowlist.
@@ -46,6 +46,10 @@ Use a controlled repository and independently inspected fixtures. Check:
     explicitly authorized host edits code and executes permitted checks.
 20. Feature completion validates its frozen task and host report without executing
     command text. Failed checks, missing assessments and remaining work stay visible.
+21. Worker reports bind the original task, role and scope. A planned, failed or
+    unavailable role cannot silently count as completed review.
+22. Same-root-cause display groups retain evidence and provenance. Distinct
+    issues sharing a source location are not overwritten or merged automatically.
 
 Run the repository's existing automated suite from the trusted development
 checkout:
@@ -86,6 +90,10 @@ unknown, not eliminated by temporal splitting.
 
 - Rust manifest declaration analysis is not Cargo resolution or compilation.
 - Host source reasoning is fallible even after exact evidence validation.
+- Role routing is heuristic, and worker execution is host-reported. Subagents
+  do not guarantee better coverage or grant independent model-provider access.
+- Root-cause grouping and conflict resolution are coordinator judgments, not
+  mechanically proven semantic equivalence.
 - Repository-first context selection is bounded and heuristic, not a full call
   graph or a guarantee that the best comparable implementation was found.
 - The host's classification of behavior versus consistency and the relevance

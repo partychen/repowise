@@ -53,9 +53,11 @@ def build_archive(project: Path, output: Path) -> dict:
                 skill / "scripts" / "repowise" / "approvals.py",
                 skill / "scripts" / "repowise" / "repository_context.py",
                 skill / "scripts" / "repowise" / "review_contract.py",
+                skill / "scripts" / "repowise" / "review_agents.py",
                 skill / "scripts" / "repowise" / "feature.py",
                 skill / "scripts" / "repowise" / "pull_requests.py",
                 skill / "references" / "feature.md",
+                skill / "references" / "review-agents.md",
                 provenance_path, skill / "wheels" / "LICENSE.PyYAML.txt",
                 skill / "wheels" / wheel["filename"]]
     paths = list(required)

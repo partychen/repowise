@@ -52,7 +52,7 @@ and support revised proposals, not turn the first comment into "log everything."
 ### Repository-first review
 
 The reviewer must examine the project's architecture, existing frameworks and
-helpers, contracts, error/resource conventions, concurrency/performance paths,
+helpers, contracts, security boundaries, error/resource conventions, concurrency/performance paths,
 tests/observability, local idioms and change scope before recommending changes.
 Generic best practices and personal syntax preferences are not repository policy.
 Prefer a small repair fitting existing mechanisms; explain when a new mechanism
@@ -60,13 +60,26 @@ is actually necessary, and consider intentional migrations and valid exceptions.
 
 This is enforced through task preparation and response validation, not only a
 prose instruction. Bounded base/head project context is frozen with the task.
-Host responses separately assess eight repository dimensions. A consistency
+Host responses separately assess the required repository dimensions. A consistency
 finding requires a verified BASE comparison as well as an approved rule and
 current code evidence; an example newly added by the PR cannot establish an old
 convention. Direct behavior defects need not invent a precedent. Omitted
 assessments and missing context remain visible gaps. Citation validation proves
 source identity, not the correctness of the model's conclusion.
 See the [review contract](.github/skills/repowise/references/review.md).
+
+### One coordinator, relevant review roles
+
+Small PRs stay with the main reviewer. Larger or risky changes can use specialist
+subagents for **architecture, logic/contracts, security, reliability,
+concurrency/performance, and tests/observability**. Roles are selected as needed,
+not always all six; the host runs them against the same frozen project context.
+
+The coordinator reviews their evidence, resolves conflicts and groups findings
+with the same root cause while preserving the original findings, rules and
+provenance. Distinct defects on the same line remain separate. Unavailable or
+failed roles remain coverage gaps, and fixed-detector findings cannot be hidden.
+See [host coordination](.github/skills/repowise/references/review-agents.md).
 
 ### What runs where
 
@@ -238,6 +251,7 @@ unequal alternatives separate and unapproved.
 | Recheck historical feedback | Use repowise to finish the pending queue, then fully refresh historical PR feedback. |
 | Learn from one PR | Use repowise to learn from acme/my-project PR #123 and save the review lessons. |
 | Start knowledge approval | Use repowise to show the pending candidates with evidence and prepare the ones I select for maintainer signing. |
+| Focus a delegated review | Use repowise to review PR #123 with architecture, security and reliability roles, then reconcile their findings. |
 | Review changes | Use repowise to review these changes using this project's approved rules. |
 | Review a GitHub PR | Use repowise to review https://github.com/acme/my-project/pull/123 using the selected project policy. |
 | Implement a feature | Use repowise to implement this feature using the project's existing architecture and approved knowledge; preserve my existing changes and obtain authorization for the needed checks. |

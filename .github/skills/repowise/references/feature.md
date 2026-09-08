@@ -96,7 +96,7 @@ the array. Empty checks and `not_run` remain verification gaps.
 
 Knowledge assessments name the task's approved revisions and use `applied`,
 `not_applicable` or `needs_context`. Missing assessments remain gaps.
-Repository assessments use the eight dimensions and exact baseline references
+Repository assessments use the shared dimensions and exact baseline references
 defined in [review](review.md). Here both task base/head identify the preparation
 baseline: these quotations establish the project guidance, not proof that the
 new implementation is correct. Missing or unsubstantiated checks cannot silently

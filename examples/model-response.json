@@ -27,6 +27,12 @@
       "references": []
     },
     {
+      "dimension": "security",
+      "status": "needs_context",
+      "rationale": "No actual authorization, untrusted input or data-isolation path was inspected.",
+      "references": []
+    },
+    {
       "dimension": "errors_lifecycle",
       "status": "needs_context",
       "rationale": "No actual error propagation or lifecycle evidence is supplied.",

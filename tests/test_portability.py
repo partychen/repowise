@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -10,6 +11,10 @@ from pathlib import Path
 from zipfile import ZipFile
 
 PROJECT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT / ".github" / "skills" / "repowise" / "scripts"))
+
+from repowise.review_contract import REPOSITORY_DIMENSIONS
+
 spec = importlib.util.spec_from_file_location("package_skill", PROJECT / "tools" / "package_skill.py")
 package_skill = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(package_skill)
@@ -44,9 +49,11 @@ class PortabilityTests(unittest.TestCase):
                 self.assertIn("repowise/scripts/repowise/approvals.py", names)
                 self.assertIn("repowise/scripts/repowise/repository_context.py", names)
                 self.assertIn("repowise/scripts/repowise/review_contract.py", names)
+                self.assertIn("repowise/scripts/repowise/review_agents.py", names)
                 self.assertIn("repowise/scripts/repowise/feature.py", names)
                 self.assertIn("repowise/scripts/repowise/pull_requests.py", names)
                 self.assertIn("repowise/references/feature.md", names)
+                self.assertIn("repowise/references/review-agents.md", names)
                 self.assertIn("repowise/packs/sources/actionbook-rust-skills.json", names)
                 self.assertIn("repowise/wheels/LICENSE.PyYAML.txt", names)
                 provenance = json.loads(archive.read("repowise/wheels/provenance.json"))
@@ -57,6 +64,16 @@ class PortabilityTests(unittest.TestCase):
                                   "wheels" / provenance["wheel"]["filename"]).read_bytes())
                 self.assertFalse(any(".review/" in name or "__pycache__" in name or name.endswith(".log") for name in names))
                 self.assertTrue(all(name.startswith("repowise/") and "\\" not in name for name in names))
+                installed_skill = moved / ".github" / "skills" / "repowise"
+                documents = [installed_skill / "SKILL.md", *(installed_skill / "references").glob("*.md")]
+                for document in documents:
+                    for link in re.findall(r"\[[^\]]+\]\(([^)]+)\)", document.read_text(encoding="utf-8")):
+                        if "://" in link or link.startswith("#"):
+                            continue
+                        linked = (document.parent / link.split("#", 1)[0]).resolve()
+                        self.assertTrue(linked.is_relative_to(installed_skill.resolve()), link)
+                        member = "repowise/" + linked.relative_to(installed_skill.resolve()).as_posix()
+                        self.assertIn(member, names, f"Unpackaged workflow link in {document.name}: {link}")
             (moved / ".github" / "skills" / "repowise" / "SKILL.md").write_text("Changed release")
             with self.assertRaisesRegex(ValueError, "Refusing to replace"):
                 package_skill.build_archive(moved, temporary / "second")
@@ -114,6 +131,15 @@ class PortabilityTests(unittest.TestCase):
                 content = path.read_text(encoding="utf-8")
                 self.assertNotIn("D:\\Tools", content)
                 self.assertNotIn("python $Tool", content)
+
+    def test_review_reference_and_example_follow_shared_dimensions(self):
+        reference = (PROJECT / ".github" / "skills" / "repowise" / "references" /
+                     "review.md").read_text(encoding="utf-8")
+        example = json.loads((PROJECT / "examples" / "model-response.json").read_text(encoding="utf-8"))
+        self.assertEqual(set(REPOSITORY_DIMENSIONS),
+                         {item["dimension"] for item in example["repository_assessments"]})
+        for dimension in REPOSITORY_DIMENSIONS:
+            self.assertIn(f"| `{dimension}` |", reference)
 
 
 if __name__ == "__main__":

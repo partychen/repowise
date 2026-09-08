@@ -85,6 +85,11 @@ repository assessments and BASE comparisons for consistency findings. Do not cop
 task into production state to complete it. Preserve its original isolated run
 directory and immutable manifest linkage.
 
+Follow each task's frozen review plan when using delegated host review.
+Missing/failed roles remain coverage gaps in evaluation too. Root-cause display
+groups do not replace the underlying finding IDs used for human adjudication;
+do not label a display group as a new independently detected issue.
+
 For each run requiring a host response, save the response for that run's actual
 task and finalize with both IDs returned by replay preparation:
 

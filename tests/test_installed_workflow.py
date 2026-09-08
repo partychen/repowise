@@ -42,6 +42,8 @@ class InstalledWorkflowTests(unittest.TestCase):
             skill = next(path.parent for path in matches if path.parent.name == "repowise")
             self.assertTrue((skill / "requirements.txt").is_file())
             self.assertTrue((skill / "scripts" / "repowise" / "sync.py").is_file())
+            self.assertTrue((skill / "scripts" / "repowise" / "review_agents.py").is_file())
+            self.assertTrue((skill / "references" / "review-agents.md").is_file())
             provenance = json.loads((skill / "wheels" / "provenance.json").read_text(encoding="utf-8"))
             self.assertTrue((skill / "wheels" / provenance["wheel"]["filename"]).is_file())
             self.assertTrue((skill / "wheels" / "LICENSE.PyYAML.txt").is_file())

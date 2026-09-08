@@ -9,6 +9,7 @@ REPOSITORY_DIMENSIONS = {
     "architecture": "Responsibilities, module boundaries, dependency direction and state ownership.",
     "reuse_frameworks": "Existing helpers, abstractions, frameworks, dependency versions and configuration.",
     "contracts_types": "Caller-visible behavior, domain types, units, defaults and compatibility.",
+    "security": "Authentication, authorization, secrets and trust boundaries.",
     "errors_lifecycle": "Error propagation, cancellation, timeouts, retries and resource cleanup.",
     "concurrency_performance": "Concurrency, blocking, locking, allocation, copying and resource bounds.",
     "tests_observability": "Relevant test conventions, behavioral coverage, logging and metrics.",
@@ -136,7 +137,8 @@ def validate_reference(reference, task, *, baseline_only=False):
         raise Error("Repository reference text does not match exact frozen source lines.")
 
 
-def validate_repository_assessments(assessments, task, *, host_required=None):
+def validate_repository_assessments(assessments, task, *, host_required=None, dimensions=None):
+    dimensions = REPOSITORY_DIMENSIONS if dimensions is None else dimensions
     if not isinstance(assessments, list):
         raise Error("Repository assessments must be an array.")
     if not (bool(task["knowledge"]) if host_required is None else host_required):
@@ -147,7 +149,7 @@ def validate_repository_assessments(assessments, task, *, host_required=None):
     for assessment in assessments:
         _object(assessment, ("dimension", "status", "rationale", "references"), "Repository assessment")
         dimension = assessment["dimension"]
-        if not isinstance(dimension, str) or dimension not in REPOSITORY_DIMENSIONS:
+        if not isinstance(dimension, str) or dimension not in dimensions:
             raise Error("Unknown repository assessment dimension.")
         if dimension in assessed:
             raise Error("Duplicate repository assessment dimension.")
@@ -169,7 +171,7 @@ def validate_repository_assessments(assessments, task, *, host_required=None):
         elif status == "needs_context":
             gaps.append(f"Repository {dimension}: {assessment['rationale']}")
     gaps.extend(f"Missing repository assessment: {dimension}"
-                for dimension in REPOSITORY_DIMENSIONS if dimension not in assessed)
+                for dimension in dimensions if dimension not in assessed)
     return gaps
 
 

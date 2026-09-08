@@ -12,6 +12,7 @@ from .common import (Error, canonical_bytes, digest, git, load_json, lock, resol
                      safe_path, utcnow, write_json)
 from .detectors import forbidden_dependency
 from .render import save_report
+from .review_agents import (DIMENSIONS, consolidate, make_plan, validate_options, worker_packets)
 from .repository_context import (_added_lines, _matches, _path, _patterns, _source_lines,
                                  capture_context)
 from .review_contract import (OUTPUT_CONTRACT, REPOSITORY_REVIEW, SCHEMA_VERSION, _object, _text,
@@ -53,19 +54,22 @@ def _identity(rule):
 
 def _finding(rule, candidate, origin):
     result = dict(candidate, knowledge_id=rule["id"], revision=rule["revision"], origin=origin)
-    result["finding_id"] = digest({
-        "knowledge_id": rule["id"], "revision": rule["revision"],
-        "evidence": result["evidence"],
-    })
+    result["finding_id"] = digest(result)
     return result
 
 
-def _report(task, findings, gaps, assessments, model, repository_assessments, awaiting=False):
+def _report(task, findings, gaps, assessments, model, repository_assessments, awaiting=False,
+            orchestration=None):
+    if orchestration is not None:
+        members = {member["member_id"]: member for member in orchestration["members"]}
+        accepted_ids = {members[identity]["finding_id"] for group in orchestration["groups"]
+                        if group["action"] != "reject" for identity in group["member_ids"]}
+        findings = [finding for finding in findings if finding["finding_id"] in accepted_ids]
     deduplicated = {f["finding_id"]: f for f in findings}
     findings = sorted(deduplicated.values(), key=lambda f: f["finding_id"])
     cap = task["max_displayed_findings"]
     all_gaps = list(dict.fromkeys(gaps))
-    return {
+    report = {
         "schema_version": SCHEMA_VERSION, "run_id": task["run_id"], "task_id": task["task_id"],
         "input_hash": task["input_hash"], "repository": task["repository"],
         "base_sha": task["base_sha"], "head_sha": task["head_sha"],
@@ -96,6 +100,25 @@ def _report(task, findings, gaps, assessments, model, repository_assessments, aw
         "repository_assessments": repository_assessments,
         "context_selection": task["context_selection"], "publishing": "unsupported",
     }
+    if "review_plan" in task:
+        report["review_plan"] = task["review_plan"]
+    if orchestration is not None:
+        report["orchestration"] = orchestration
+        members = {member["member_id"]: member for member in orchestration["members"]}
+        groups = [group for group in orchestration["groups"] if group["display"]]
+        displayed = groups[:cap]
+        visible = {members[identity]["finding_id"] for group in displayed for identity in group["member_ids"]}
+        report.update(
+            raw_finding_count=len(members),
+            raw_unique_finding_count=len({member["finding_id"] for member in members.values()}),
+            rejected_member_count=sum(len(group["member_ids"]) for group in orchestration["groups"]
+                                      if group["action"] == "reject"),
+            total_display_groups=len(groups),
+            omitted_display_groups=max(0, len(groups) - cap), displayed_groups=displayed,
+            displayed_findings=[finding for finding in findings if finding["finding_id"] in visible],
+            omitted_findings=len(findings) - len(visible),
+        )
+    return report
 
 
 def _run_directory(root, run_id, runs_root=None):
@@ -117,10 +140,12 @@ def prepare_review(target_root: Path, repository: str, base: str, head: str, tru
                    max_files: int = 100, max_bytes: int = 500000, at: str | None = None,
                    *, memory_root: Path, runs_root: Path | None = None, reference_query: str | None = None,
                    reference_limit: int = 3, context_paths: list[str] | None = None,
-                   pr_context: dict | None = None) -> dict:
+                   pr_context: dict | None = None, review_mode: str = "auto",
+                   review_roles: list[str] | None = None, max_review_workers: int = 3) -> dict:
     from .core import load_git_snapshot
 
     target_root = Path(target_root).resolve()
+    validate_options(review_mode, [] if review_roles is None else review_roles, max_review_workers)
     memory_root = validate_memory_root(target_root, memory_root)
     if (type(max_files) is not int or type(max_bytes) is not int or max_files < 1 or max_bytes < 1):
         raise Error("max_files and max_bytes must be positive integers.")
@@ -260,10 +285,19 @@ def prepare_review(target_root: Path, repository: str, base: str, head: str, tru
         "pull_request": deepcopy(pr_context),
         "max_displayed_findings": max_display,
         "detector_runs": detector_runs,
+        "static_findings": deepcopy(static_findings),
         "reference_packs": references, "reference_selection": reference_selection,
         "limits": {"max_files": max_files, "max_bytes": max_bytes, "consumed_bytes": consumed,
                    "max_rules": max_rules},
     }
+    task["review_plan"] = make_plan(task, changed, review_mode, review_roles, max_review_workers)
+    task["output_contract"]["repository_assessments"][0]["dimension"] = "one of: " + " | ".join(DIMENSIONS)
+    task["output_contract"]["instructions"] += (
+        " Consult review_plan for frozen host-only role assignments and its optional versioned "
+        "orchestration response extension. Coordinator repository_assessments cover "
+        "review_plan.dimensions, including security. Seven-key responses remain accepted; "
+        "omitted security or selected worker coverage remains a gap."
+    )
     task["input_hash"] = digest(task)
     state = {"task": task, "static_findings": static_findings, "assessments": assessments,
              "selected_knowledge": rules}
@@ -275,6 +309,8 @@ def prepare_review(target_root: Path, repository: str, base: str, head: str, tru
             raise Error("Run already exists; prepare a new run.")
         directory.mkdir(parents=True)
         write_json(safe_path(directory, "task.json"), task)
+        for name, packet in worker_packets(task).items():
+            write_json(safe_path(directory, name), packet)
         write_json(safe_path(directory, "request.json"), state)
         save_report(directory, report)
         if not semantic:
@@ -283,6 +319,7 @@ def prepare_review(target_root: Path, repository: str, base: str, head: str, tru
             write_json(safe_path(directory, "completion.json"), completion)
     return {"run_id": run_id, "task_id": task["task_id"], "input_hash": task["input_hash"],
             "task_path": str(directory / "task.json"), "report_path": str(directory / "report.json"),
+            "worker_task_paths": [str(directory / name) for name in worker_packets(task)],
             "requires_response": bool(semantic), "task": task, "report": report}
 
 
@@ -299,9 +336,19 @@ def _requested(item, requested):
     return requested[identity]
 
 
-def _validate_response(response, task):
-    _object(response, ("schema_version", "task_id", "input_hash", "model", "repository_assessments",
-                       "assessments", "findings"), "Response")
+def _validate_response(response, task, *, dimensions=None, requested_identities=None, allow_orchestration=True):
+    if dimensions is None and "review_plan" in task:
+        dimensions = task["review_plan"]["dimensions"]
+    fields = ("schema_version", "task_id", "input_hash", "model", "repository_assessments",
+              "assessments", "findings")
+    extended = isinstance(response, dict) and "orchestration" in response
+    if extended and allow_orchestration:
+        if response["orchestration"] is None:
+            raise Error("Orchestration must be an object.")
+        fields += ("orchestration",)
+        if dimensions is None:
+            dimensions = DIMENSIONS
+    _object(response, fields, "Response")
     if type(response["schema_version"]) is not int or response["schema_version"] != SCHEMA_VERSION:
         raise Error("Unsupported response schema version.")
     if response["task_id"] != task["task_id"] or response["input_hash"] != task["input_hash"]:
@@ -313,10 +360,11 @@ def _validate_response(response, task):
         raise Error("Response model provider differs from the trusted configured provider.")
     if not isinstance(response["assessments"], list) or not isinstance(response["findings"], list):
         raise Error("Assessments and findings must be arrays.")
-    requested = {_identity(rule): rule for rule in task["knowledge"]}
+    requested = {_identity(rule): rule for rule in task["knowledge"]
+                 if requested_identities is None or _identity(rule) in requested_identities}
     contexts = {c["path"]: c for c in task["code_context"]}
     assessed = {}
-    gaps = validate_repository_assessments(response["repository_assessments"], task)
+    gaps = validate_repository_assessments(response["repository_assessments"], task, dimensions=dimensions)
     for assessment in response["assessments"]:
         _object(assessment, ("knowledge_id", "revision", "status", "rationale"), "Assessment")
         rule = _requested(assessment, requested)
@@ -399,6 +447,9 @@ def finalize_review(root: Path, run_id: str, response_path: Path, *, runs_root: 
             raise Error("Stored task belongs to a different code/policy source or isolated runs directory.")
         if load_json(safe_path(directory, "task.json")) != task:
             raise Error("Host task packet was modified after preparation.")
+        for name, packet in worker_packets(task).items():
+            if load_json(safe_path(directory, name)) != packet:
+                raise Error("Host worker task packet was modified after preparation.")
         completion = safe_path(directory, "completion.json")
         if completion.exists():
             previous = load_json(completion)
@@ -407,6 +458,8 @@ def finalize_review(root: Path, run_id: str, response_path: Path, *, runs_root: 
                 raise Error("Stored completion was modified.")
             if previous["response_hash"] is None and not task["knowledge"]:
                 _validate_response(response, task)
+                if "orchestration" in response:
+                    raise Error("Static-only acknowledgement cannot claim host orchestration.")
                 acknowledgement = safe_path(directory, "response.json")
                 if acknowledgement.exists():
                     if digest(load_json(acknowledgement)) != response_hash:
@@ -418,9 +471,15 @@ def finalize_review(root: Path, run_id: str, response_path: Path, *, runs_root: 
                 raise Error("Run is already completed with a different response; prepare a new run.")
             return previous["report"]
         findings, gaps = _validate_response(response, task)
-        report = _report(task, state["static_findings"] + findings, task["coverage_gaps"] + gaps,
+        orchestration = consolidate(task, response, findings, state["static_findings"], _validate_response)
+        findings = [{key: value for key, value in member.items() if key not in ("member_id", "provenance")}
+                    for member in orchestration["members"]]
+        gaps.extend(orchestration["coverage_gaps"])
+        report = _report(task, findings, task["coverage_gaps"] + gaps,
                          state["assessments"] + response["assessments"], response["model"],
-                         response["repository_assessments"])
+                         response["repository_assessments"],
+                         orchestration=orchestration if ("orchestration" in response or
+                                                        task.get("review_plan", {}).get("selected_roles")) else None)
         write_json(safe_path(directory, "response.json"), response)
         save_report(directory, report)
         completed = {"response_hash": response_hash, "report": report}

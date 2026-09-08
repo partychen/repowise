@@ -83,6 +83,13 @@ def parser() -> argparse.ArgumentParser:
                              "within the same file/byte budget. Never reads the worktree.")
     review.add_argument("--reference-query", help="Optionally freeze relevant external reference packs into the host task.")
     review.add_argument("--reference-limit", type=int, default=3)
+    from .review_agents import ROLES
+    review.add_argument("--review-mode", choices=("auto", "single", "multi"), default="auto",
+                        help="Freeze an explainable host dispatch plan; never launch workers in the CLI.")
+    review.add_argument("--review-role", choices=tuple(ROLES), action="append", default=[],
+                        help="Select a host review role; repeatable, incompatible with single mode.")
+    review.add_argument("--max-review-workers", type=int, default=3,
+                        help="Host concurrency bound, 1-6; serial fallback must be recorded honestly.")
     feature = commands.add_parser("feature", help="Prepare project context for user-authorized host feature implementation.")
     feature.add_argument("--repository", help="Project repository; defaults to the saved binding.")
     feature.add_argument("--goal", required=True, help="The actual user-requested feature and acceptance criteria.")
@@ -209,13 +216,16 @@ def _dispatch_project(args, storage):
                 storage.target_root, args.repository, args.pr, args.trusted_ref, memory_root=root,
                 max_files=args.max_files, max_bytes=args.max_bytes, context_paths=args.context_path,
                 reference_query=args.reference_query, reference_limit=args.reference_limit,
+                review_mode=args.review_mode, review_roles=args.review_role,
+                max_review_workers=args.max_review_workers,
             )
         if args.base is None or args.head is None:
             raise Error("Review requires --pr or both --base and --head.")
         return prepare_review(storage.target_root, args.repository, args.base, args.head,
                               args.trusted_ref, args.max_files, args.max_bytes, memory_root=root,
                               reference_query=args.reference_query, reference_limit=args.reference_limit,
-                              context_paths=args.context_path)
+                              context_paths=args.context_path, review_mode=args.review_mode,
+                              review_roles=args.review_role, max_review_workers=args.max_review_workers)
     if args.command == "feature":
         from .feature import prepare_feature
         return prepare_feature(
